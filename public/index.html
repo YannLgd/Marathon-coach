@@ -11,7 +11,7 @@
   <title>Marathon Coach</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-    body { background: #07090f; color: #e2e8f0; font-family: -apple-system, 'Inter', system-ui, sans-serif; min-height: 100vh; max-width: 430px; margin: 0 auto; padding-bottom: 40px; }
+    body { background: #07090f; color: #e2e8f0; font-family: -apple-system, 'Inter', system-ui, sans-serif; min-height: 100vh; max-width: 430px; margin: 0 auto; padding-bottom: 40px; padding-top: env(safe-area-inset-top); }
     button { border: none; cursor: pointer; font-family: inherit; }
     @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -128,7 +128,7 @@ function h(tag, attrs, ...children) {
 // ── Header ─────────────────────────────────────────────────────
 function renderHeader() {
   const days = getDays(), phase = getPhase(days);
-  const next = state.result ? getNextSession(state.result.week) : null;
+  const next = state.result ? { session: state.result.headline, label: state.result.type } : null;
 
   return h('div', {style:{padding:'20px 18px 16px',borderBottom:'1px solid #111827'}},
     h('div', {style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'14px'}},
@@ -172,15 +172,6 @@ function renderHome() {
 
   return h('div', {class:'fade',style:{padding:'20px 18px'}},
     h('div', {style:{fontSize:'14px',fontWeight:'700',color:'#e2e8f0',marginBottom:'3px'}}, `Bonjour ${name} 👋`),
-
-    // Cache banner
-    cache && h('div', {
-      onclick: () => setState({view:'result'}),
-      style:{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#0a1628',border:'1px solid #1a2f4a',borderRadius:'12px',padding:'12px 14px',marginBottom:'16px',cursor:'pointer'}},
-      h('div', null,
-        h('div', {style:{fontSize:'10px',color:'#3b82f6',fontWeight:'700',marginBottom:'2px'}}, '✓ Dernière analyse disponible'),
-        h('div', {style:{fontSize:'11px',color:'#4b5563'}}, `il y a ${cacheAge < 1 ? 'moins d\'1h' : cacheAge + 'h'} · Tap pour consulter`)),
-      h('span', {style:{color:'#3b82f6',fontSize:'16px'}}, '›')),
 
     !cache && h('div', {style:{fontSize:'12px',color:'#4b5563',marginBottom:'16px'}},'Lance une analyse pour obtenir ta première séance.'),
 
