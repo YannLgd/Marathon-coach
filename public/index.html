@@ -235,7 +235,8 @@ function renderCross() {
 }
 
 function renderResult() {
-  const d = state.result;
+  const cached2 = loadCache();
+  const d = state.result || (cached2 ? cached2.result : null);
   if (!d) return renderHome();
   const cache = loadCache();
   const cacheAge = cache ? Math.round((Date.now() - cache.savedAt) / 3600000) : null;
