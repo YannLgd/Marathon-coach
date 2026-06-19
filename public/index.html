@@ -30,17 +30,49 @@ const getPhase = d => {
   return           { label:"Tapering",        color:"#34d399", bg:"#032118" };
 };
 
+const DAYS_FR = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
+const MONTHS_FR = ["jan","fév","mar","avr","mai","juin","juil","août","sep","oct","nov","déc"];
+
+// ── Cache helpers ──────────────────────────────────────────────
+function saveCache(result) {
+  localStorage.setItem("mc_last_result", JSON.stringify({ result, savedAt: Date.now() }));
+}
+function loadCache() {
+  try { return JSON.parse(localStorage.getItem("mc_last_result") || "null"); } catch { return null; }
+}
+
+// Trouve la prochaine séance dans le programme semaine
+function getNextSession(week) {
+  if (!week || !week.length) return null;
+  const today = new Date().getDay(); // 0=dim, 1=lun...
+  const dayMap = { "Dim":0, "Lun":1, "Mar":2, "Mer":3, "Jeu":4, "Ven":5, "Sam":6 };
+  // Cherche le prochain jour non-repos à partir de demain
+  for (let i = 1; i <= 7; i++) {
+    const targetDay = (today + i) % 7;
+    const found = week.find(w => dayMap[w.day] === targetDay && w.session !== "Repos" && w.session !== "Récup");
+    if (found) {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      return { session: found.session, label: `${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]}` };
+    }
+  }
+  return null;
+}
+
+// ── State ──────────────────────────────────────────────────────
+const cached = loadCache();
 let state = {
   view: "home",
   loading: false,
   error: null,
-  result: null,
-  activities: [],
+  result: cached ? cached.result : null,
+  savedAt: cached ? cached.savedAt : null,
   auth: JSON.parse(localStorage.getItem("mc_auth") || "null"),
 };
 
 function setState(patch) { state = { ...state, ...patch }; render(); }
 
+// ── Auth helpers ───────────────────────────────────────────────
 function saveAuth(auth) { localStorage.setItem("mc_auth", JSON.stringify(auth)); state.auth = auth; }
 
 async function getValidToken() {
@@ -66,18 +98,21 @@ function handleOAuthParams() {
   }
 }
 
+// ── API call ───────────────────────────────────────────────────
 async function analyze(mode, extra = "") {
-  setState({ loading:true, error:null, result:null, view:"loading" });
+  setState({ loading:true, error:null, view:"loading" });
   try {
     const token = await getValidToken();
     if (!token) { setState({ loading:false, view:"login" }); return; }
     const res = await fetch("/api/analyze", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ access_token:token, mode, extra }) });
     const data = await res.json();
     if (!res.ok || !data.result) throw new Error(data.error || "Erreur serveur");
-    setState({ loading:false, result:data.result, activities:data.activities||[], view:"result" });
+    saveCache(data.result);
+    setState({ loading:false, result:data.result, savedAt:Date.now(), view:"result" });
   } catch(e) { setState({ loading:false, error:e.message, view:"error" }); }
 }
 
+// ── UI helpers ─────────────────────────────────────────────────
 const css = s => Object.entries(s).map(([k,v])=>`${k.replace(/([A-Z])/g,'-$1').toLowerCase()}:${v}`).join(';');
 function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
@@ -90,8 +125,11 @@ function h(tag, attrs, ...children) {
   return el;
 }
 
+// ── Header ─────────────────────────────────────────────────────
 function renderHeader() {
   const days = getDays(), phase = getPhase(days);
+  const next = state.result ? getNextSession(state.result.week) : null;
+
   return h('div', {style:{padding:'20px 18px 16px',borderBottom:'1px solid #111827'}},
     h('div', {style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'14px'}},
       h('div', null,
@@ -102,32 +140,50 @@ function renderHeader() {
       h('div', {style:{display:'flex',alignItems:'center',gap:'7px',background:phase.bg,borderRadius:'20px',padding:'6px 14px',border:`1px solid ${phase.color}30`}},
         h('div', {style:{width:'6px',height:'6px',borderRadius:'50%',background:phase.color,boxShadow:`0 0 6px ${phase.color}`}}),
         h('span', {style:{fontSize:'11px',color:phase.color,fontWeight:'700'}}, phase.label))),
-    h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'7px'}},
+    // Objectif strip
+    h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'7px',marginBottom: next ? '10px' : '0'}},
       ...[ ['Distance','42,2 km','#a78bfa'], ['Objectif',"4h00'00",'#60a5fa'], ['Allure',"5'41\"/km",'#34d399'] ].map(([label,value,color]) =>
         h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:`2px solid ${color}25`,textAlign:'center'}},
           h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, label),
-          h('div', {style:{fontSize:'12px',fontWeight:'800',color,lineHeight:'1'}}, value)))));
+          h('div', {style:{fontSize:'12px',fontWeight:'800',color,lineHeight:'1'}}, value)))),
+    // Prochaine séance pill
+    next && h('div', {
+      onclick: () => setState({ view:'result' }),
+      style:{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#0e1118',borderRadius:'10px',padding:'10px 14px',border:'1px solid #1a2035',cursor:'pointer'}},
+      h('div', null,
+        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, '📅 Prochaine séance'),
+        h('div', {style:{fontSize:'13px',fontWeight:'700',color:'#a78bfa'}}, next.label + ' · ' + next.session)),
+      h('span', {style:{color:'#2d3748',fontSize:'16px'}}, '›'))
+  );
 }
 
-function renderLogin() {
-  return h('div', {class:'fade',style:{padding:'40px 18px',textAlign:'center'}},
-    h('div', {style:{fontSize:'40px',marginBottom:'16px'}}, '🏃'),
-    h('div', {style:{fontSize:'20px',fontWeight:'800',color:'#fff',marginBottom:'8px'}}, 'Marathon Coach'),
-    h('div', {style:{fontSize:'13px',color:'#4b5563',marginBottom:'32px',lineHeight:'1.6'}}, 'Connecte ton compte Strava pour des recommandations basées sur tes vraies données.'),
-    h('button', {onclick:connectStrava, style:{width:'100%',padding:'18px',borderRadius:'14px',background:'#FC4C02',color:'#fff',fontSize:'16px',fontWeight:'700'}}, '🚴 Connecter Strava'));
-}
-
+// ── Views ──────────────────────────────────────────────────────
 function renderHome() {
   const name = state.auth?.athlete_name || 'Yann';
+  const cache = loadCache();
+  const cacheAge = cache ? Math.round((Date.now() - cache.savedAt) / 3600000) : null;
+
   const btns = [
-    {id:'session',icon:'⚡',label:'Ma prochaine séance',sub:'Analyse Strava en temps réel'},
-    {id:'week',icon:'📅',label:'Prochaine semaine',sub:'Programme 7 jours détaillé'},
-    {id:'fatigue',icon:'😮‍💨',label:'Je suis fatigué',sub:'Adapter la charge'},
-    {id:'cross',icon:'🚴',label:'Autre sport fait',sub:'Vélo, natation, rando…'},
+    {id:'session',icon:'⚡',label:'Ma prochaine séance',sub:'Analyse Strava · utilise des tokens'},
+    {id:'week',   icon:'📅',label:'Prochaine semaine',  sub:'Programme 7 jours · utilise des tokens'},
+    {id:'fatigue',icon:'😮‍💨',label:'Je suis fatigué',   sub:'Adapter la charge · utilise des tokens'},
+    {id:'cross',  icon:'🚴',label:'Autre sport fait',   sub:'Vélo, natation, rando… · utilise des tokens'},
   ];
+
   return h('div', {class:'fade',style:{padding:'20px 18px'}},
     h('div', {style:{fontSize:'14px',fontWeight:'700',color:'#e2e8f0',marginBottom:'3px'}}, `Bonjour ${name} 👋`),
-    h('div', {style:{fontSize:'12px',color:'#4b5563',marginBottom:'18px'}}, 'Connecté à Strava · Analyse IA en direct'),
+
+    // Cache banner
+    cache && h('div', {
+      onclick: () => setState({view:'result'}),
+      style:{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#0a1628',border:'1px solid #1a2f4a',borderRadius:'12px',padding:'12px 14px',marginBottom:'16px',cursor:'pointer'}},
+      h('div', null,
+        h('div', {style:{fontSize:'10px',color:'#3b82f6',fontWeight:'700',marginBottom:'2px'}}, '✓ Dernière analyse disponible'),
+        h('div', {style:{fontSize:'11px',color:'#4b5563'}}, `il y a ${cacheAge < 1 ? 'moins d\'1h' : cacheAge + 'h'} · Tap pour consulter`)),
+      h('span', {style:{color:'#3b82f6',fontSize:'16px'}}, '›')),
+
+    !cache && h('div', {style:{fontSize:'12px',color:'#4b5563',marginBottom:'16px'}},'Lance une analyse pour obtenir ta première séance.'),
+
     ...btns.map(b => h('button', {
       onclick:()=> b.id==='cross' ? setState({view:'cross'}) : analyze(b.id),
       style:{width:'100%',display:'flex',alignItems:'center',gap:'14px',background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'16px',marginBottom:'9px',color:'#e2e8f0',textAlign:'left'}},
@@ -136,7 +192,19 @@ function renderHome() {
         h('div', {style:{fontSize:'14px',fontWeight:'600',marginBottom:'2px'}}, b.label),
         h('div', {style:{fontSize:'11px',color:'#4b5563'}}, b.sub)),
       h('span', {style:{color:'#2d3748',fontSize:'18px'}}, '›'))),
-    h('button', {onclick:()=>{localStorage.removeItem('mc_auth');setState({auth:null,view:'login'});}, style:{width:'100%',padding:'12px',background:'transparent',border:'1px dashed #1a2035',borderRadius:'12px',color:'#3b4560',fontSize:'12px',marginTop:'4px'}}, '🔗 Déconnecter Strava'));
+
+    h('button', {
+      onclick:()=>{localStorage.removeItem('mc_auth');localStorage.removeItem('mc_last_result');setState({auth:null,result:null,view:'login'});},
+      style:{width:'100%',padding:'12px',background:'transparent',border:'1px dashed #1a2035',borderRadius:'12px',color:'#3b4560',fontSize:'12px',marginTop:'4px'}
+    }, '🔗 Déconnecter Strava'));
+}
+
+function renderLogin() {
+  return h('div', {class:'fade',style:{padding:'40px 18px',textAlign:'center'}},
+    h('div', {style:{fontSize:'40px',marginBottom:'16px'}}, '🏃'),
+    h('div', {style:{fontSize:'20px',fontWeight:'800',color:'#fff',marginBottom:'8px'}}, 'Marathon Coach'),
+    h('div', {style:{fontSize:'13px',color:'#4b5563',marginBottom:'32px',lineHeight:'1.6'}}, 'Connecte ton compte Strava pour des recommandations basées sur tes vraies données.'),
+    h('button', {onclick:connectStrava,style:{width:'100%',padding:'18px',borderRadius:'14px',background:'#FC4C02',color:'#fff',fontSize:'16px',fontWeight:'700'}}, '🚴 Connecter Strava'));
 }
 
 function renderLoading() {
@@ -151,7 +219,7 @@ function renderError() {
     h('div', {style:{background:'#1a0a0a',borderRadius:'14px',padding:'20px',border:'1px solid #3a1515',marginBottom:'16px'}},
       h('div', {style:{fontSize:'15px',fontWeight:'700',color:'#f87171',marginBottom:'8px'}}, '❌ Erreur'),
       h('div', {style:{fontSize:'12px',color:'#6b7280',lineHeight:'1.5',wordBreak:'break-word'}}, state.error)),
-    h('button', {onclick:()=>setState({view:'home',error:null}), style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#e2e8f0',fontSize:'14px',fontWeight:'700'}}, '← Réessayer'));
+    h('button', {onclick:()=>setState({view:'home',error:null}),style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#e2e8f0',fontSize:'14px',fontWeight:'700'}}, '← Retour'));
 }
 
 function renderCross() {
@@ -160,48 +228,64 @@ function renderCross() {
     h('div', {style:{fontSize:'14px',fontWeight:'700',color:'#e2e8f0',marginBottom:'4px'}}, '🚴 Quel sport as-tu fait ?'),
     h('div', {style:{fontSize:'12px',color:'#4b5563',marginBottom:'18px'}}, 'Je vais adapter ta prochaine séance.'),
     h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'16px'}},
-      ...opts.map(([icon,label]) => h('button', {onclick:()=>analyze('cross',label), style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}},
+      ...opts.map(([icon,label]) => h('button', {onclick:()=>analyze('cross',label),style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}},
         h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, icon),
         h('div', {style:{fontSize:'13px',fontWeight:'600'}}, label)))),
-    h('button', {onclick:()=>setState({view:'home'}), style:{width:'100%',padding:'15px',borderRadius:'12px',background:'transparent',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px'}}, '← Retour'));
+    h('button', {onclick:()=>setState({view:'home'}),style:{width:'100%',padding:'15px',borderRadius:'12px',background:'transparent',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px'}}, '← Retour'));
 }
 
 function renderResult() {
   const d = state.result;
   if (!d) return renderHome();
+  const cache = loadCache();
+  const cacheAge = cache ? Math.round((Date.now() - cache.savedAt) / 3600000) : null;
+
   const stat = (label,value,color) => h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'13px 12px',borderBottom:`2px solid ${color}35`}},
     h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, label),
     h('div', {style:{fontSize:'16px',fontWeight:'800',color,lineHeight:'1'}}, value));
+
   const row = (icon,label,val) => h('div', {style:{display:'flex',gap:'10px',marginBottom:'10px',alignItems:'flex-start'}},
     h('span', {style:{fontSize:'14px',flexShrink:'0',marginTop:'1px'}}, icon),
     h('div', null,
       h('span', {style:{fontSize:'8px',color:'#3b4560',fontWeight:'700',textTransform:'uppercase',letterSpacing:'1px'}}, label+' · '),
       h('span', {style:{fontSize:'12px',color:'#6b7280',lineHeight:'1.5'}}, val)));
+
   return h('div', {class:'fade',style:{padding:'20px 18px'}},
+    // Cache info
+    cacheAge !== null && h('div', {style:{fontSize:'10px',color:'#2d3748',marginBottom:'10px',textAlign:'right'}},
+      `📱 En cache · il y a ${cacheAge < 1 ? "moins d'1h" : cacheAge+'h'}`),
+    // Hero
     h('div', {style:{background:'linear-gradient(135deg,#1a0f35,#0d1a35)',borderRadius:'16px',padding:'20px 18px',marginBottom:'10px',border:'1px solid #2a1f4a'}},
       h('div', {style:{fontSize:'9px',color:'#4b5563',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'5px',fontWeight:'700'}}, 'Séance recommandée'),
       h('div', {style:{fontSize:'24px',fontWeight:'900',color:'#fff',letterSpacing:'-0.5px',marginBottom:'3px'}}, d.headline),
       h('div', {style:{fontSize:'13px',color:'#6b7280'}}, d.type)),
+    // Stats
     h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'10px'}},
       stat('Distance',d.distance,'#a78bfa'), stat('Allure',d.pace,'#60a5fa'),
-      stat('FC cible',d.hr,'#f87171'), stat('RPE',d.rpe,'#fbbf24')),
+      stat('FC cible',d.hr,'#f87171'),       stat('RPE',d.rpe,'#fbbf24')),
+    // Tip
     h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px',borderLeft:'3px solid #fbbf24'}},
       h('div', {style:{fontSize:'8px',color:'#78520a',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, '💡 Conseil clé'),
       h('div', {style:{fontSize:'13px',color:'#fbbf24',lineHeight:'1.5'}}, d.tip)),
+    // Logistics
     h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
-      row('🍌','Avant',d.before), row('💧','Pendant',d.during), row('🥛','Après',d.after), row('👟','Équipement',d.gear)),
+      row('🍌','Avant',d.before), row('💧','Pendant',d.during),
+      row('🥛','Après',d.after), row('👟','Équipement',d.gear)),
+    // Week
     d.week && h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
       h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontWeight:'700'}}, 'Bloc semaine'),
       h('div', {style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'5px'}},
         ...d.week.map(w => h('div', null,
           h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'5px',textTransform:'uppercase',textAlign:'center',fontWeight:'600'}}, w.day),
           h('div', {style:{borderRadius:'7px',padding:'5px 2px',background:(w.color||'#374151')+'18',border:`1px solid ${(w.color||'#374151')}30`,fontSize:'7px',color:w.color||'#374151',fontWeight:'700',minHeight:'34px',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:'1.2',textAlign:'center'}}, w.session))))),
+    // Why
     h('div', {style:{background:'#080b10',borderRadius:'12px',padding:'14px 16px',marginBottom:'16px',border:'1px dashed #1a2035'}},
       h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, '🧠 Pourquoi'),
       h('div', {style:{fontSize:'12px',color:'#4b5563',lineHeight:'1.6'}}, d.why)),
-    h('button', {onclick:()=>setState({view:'home',result:null}), style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px',fontWeight:'600'}}, '← Nouvelle analyse'));
+    h('button', {onclick:()=>setState({view:'home',result:null}),style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px',fontWeight:'600'}}, '← Retour'));
 }
 
+// ── Render ─────────────────────────────────────────────────────
 function render() {
   const app = document.getElementById('app');
   app.innerHTML = '';
@@ -210,10 +294,10 @@ function render() {
   app.appendChild((views[state.view]||renderHome)());
 }
 
+// ── Init ───────────────────────────────────────────────────────
 handleOAuthParams();
 if (!state.auth) state.view = 'login';
 render();
 </script>
 </body>
 </html>
-
