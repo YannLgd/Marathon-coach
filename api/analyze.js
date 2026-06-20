@@ -1,7 +1,8 @@
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  const { access_token, mode, extra } = req.body;
+  const { access_token, mode, extra, prefsPrompt } = req.body;
+
   if (!access_token) return res.status(400).json({ error: "No access_token" });
 
   const stravaRes = await fetch(
@@ -45,7 +46,7 @@ export default async function handler(req, res) {
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
-      system: `Tu es un coach marathon expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : Yann · 73kg · Nice · sub-4h · Marathon de Nice 14 sept 2026 · ${daysLeft} jours restants. Schéma JSON : ${schema}`,
+      system: `Tu es un coach marathon expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : Yann · 73kg · Nice · sub-4h · Marathon de Nice 14 sept 2026 · ${daysLeft} jours restants.${prefsPrompt || ""} Schéma JSON : ${schema}`,
       messages: [{
         role: "user",
         content: `Activités Strava récentes :\n${activitySummary}\n\n${modePrompts[mode] || modePrompts.session}`,
