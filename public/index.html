@@ -200,19 +200,32 @@ function renderHome() {
       h('span', {style:{color:'#2d3748',fontSize:'18px'}}, '›'))),
 
     // ── Bloc Ma semaine ────────────────────────────────────────
-    week && h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px'}},
-      h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontWeight:'700'}}, '📅 Ma semaine'),
-      h('div', {style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'4px'}},
-        ...week.map(w => {
-          const color = getColor(w.session);
-          const isRest = !w.session || w.session === 'Repos' || w.session === 'Récup';
-          return h('div', {style:{textAlign:'center'}},
-            h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'4px',textTransform:'uppercase',fontWeight:'600'}}, w.day),
-            h('div', {style:{borderRadius:'8px',padding:'5px 2px',background:color+'15',border:`1px solid ${color}30`,minHeight:'52px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'2px'}},
-              h('div', {style:{fontSize:'7px',color:color,fontWeight:'700',lineHeight:'1.2',textAlign:'center'}}, isRest ? '·' : (w.session||'').split(' ')[0]),
-              !isRest && w.distance && h('div', {style:{fontSize:'8px',color:'#e2e8f0',fontWeight:'800'}}, w.distance),
-              !isRest && w.pace && h('div', {style:{fontSize:'6px',color:'#6b7280'}}, w.pace)));
-        }))),
+    (() => {
+      if (!week) return null;
+      const normalizeRun = s => {
+        if (!s) return null;
+        const sl = s.toLowerCase();
+        if (sl.includes('fractionn') || sl.includes('interval') || sl.includes('vma') || sl.includes('répét')) return { label:'Fractionné', color:'#f87171' };
+        if (sl.includes('tempo') || sl.includes('seuil') || sl.includes('allure marathon') || sl.includes('allure spé')) return { label:'Tempo', color:'#fbbf24' };
+        if (sl.includes('sortie longue') || sl.includes('long run') || sl.includes('sl ')) return { label:'Sortie longue', color:'#a78bfa' };
+        if (sl.includes('footing') || sl.includes('ef ') || sl.includes('endurance fond') || sl.includes('récup') || sl.includes('recup') || sl.includes('régén') || sl.includes('regen')) return { label:'Footing', color:'#60a5fa' };
+        return null; // pas une course → on n'affiche pas
+      };
+      const runs = week.filter(w => normalizeRun(w.session));
+      if (!runs.length) return null;
+      return h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px'}},
+        h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontWeight:'700'}}, '📅 Ma semaine'),
+        h('div', {style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'2px'}},
+          ...runs.map(w => {
+            const run = normalizeRun(w.session);
+            const km = w.distance || '';
+            return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'60px'}},
+              h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'4px',textTransform:'uppercase',fontWeight:'600'}}, w.day),
+              h('div', {style:{borderRadius:'10px',padding:'8px 6px',background:run.color+'15',border:`1px solid ${run.color}30`,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'4px',minHeight:'56px'}},
+                h('div', {style:{fontSize:'8px',color:run.color,fontWeight:'800',lineHeight:'1.2',textAlign:'center'}}, run.label),
+                km && h('div', {style:{fontSize:'11px',color:'#e2e8f0',fontWeight:'900',lineHeight:'1'}}, km)));
+          })));
+    })(),
 
     h('button', {
       onclick:()=>{localStorage.removeItem('mc_auth');localStorage.removeItem('mc_last_result');setState({auth:null,result:null,view:'login'});},
@@ -316,3 +329,4 @@ render();
 </script>
 </body>
 </html>
+
