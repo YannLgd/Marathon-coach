@@ -31,9 +31,9 @@ const getPhase = d => {
 };
 
 const DAYS_FR = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
-const MONTHS_FR = ["jan","fév","mar","avr","mai","juin","juil","août","sep","oct","nov","déc"];
+const MONTHS_FR = ["jan","fev","mar","avr","mai","juin","juil","aout","sep","oct","nov","dec"];
 
-// ── Cache helpers ──────────────────────────────────────────────
+// Cache helpers
 function saveCache(result) {
   localStorage.setItem("mc_last_result", JSON.stringify({ result, savedAt: Date.now() }));
 }
@@ -47,24 +47,7 @@ function loadWeeklyPlan() {
   try { return JSON.parse(localStorage.getItem("mc_weekly_plan") || "null"); } catch { return null; }
 }
 
-// Trouve la prochaine séance dans le programme semaine
-function getNextSession(week) {
-  if (!week || !week.length) return null;
-  const today = new Date().getDay();
-  const dayMap = { "Dim":0, "Lun":1, "Mar":2, "Mer":3, "Jeu":4, "Ven":5, "Sam":6 };
-  for (let i = 1; i <= 7; i++) {
-    const targetDay = (today + i) % 7;
-    const found = week.find(w => dayMap[w.day] === targetDay && w.session !== "Repos" && w.session !== "Récup");
-    if (found) {
-      const d = new Date();
-      d.setDate(d.getDate() + i);
-      return { session: found.session, label: `${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]}` };
-    }
-  }
-  return null;
-}
-
-// ── Prefs helpers ──────────────────────────────────────────────
+// Prefs helpers
 function loadPrefs() {
   try { return JSON.parse(localStorage.getItem("mc_prefs") || "null") || { sessions: 4, days: [0, 2, 4, 5] }; }
   catch { return { sessions: 4, days: [0, 2, 4, 5] }; }
@@ -75,10 +58,17 @@ function savePrefsData(p) {
 function getPrefsPrompt(p) {
   const dayNames = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"];
   const selected = [...p.days].sort((a,b)=>a-b).map(d => dayNames[d]).join(", ");
-  return `\nPréférences athlète : ${p.sessions} séances de course par semaine. Jours disponibles : ${selected || "non précisés"}.`;
+  return "\nPREFERENCES IMPORTANTES - respecter strictement : EXACTEMENT " + p.sessions + " seances de course par semaine (pas plus, pas moins). Jours disponibles pour courir : " + (selected || "non precises") + ". Les autres jours doivent etre Repos ou cross-training. Le champ week[] doit contenir exactement " + p.sessions + " entrees avec une vraie seance de course.";
 }
 
-// ── State ──────────────────────────────────────────────────────
+// Extrait le kilometrage depuis une string type "EF 12km" ou "Tempo 10 km"
+function extractKm(session) {
+  if (!session) return '';
+  const m = session.match(/(\d+(?:[.,]\d+)?)\s*km/i);
+  return m ? m[1] + 'km' : '';
+}
+
+// State
 const cached = loadCache();
 let state = {
   view: "home",
@@ -91,7 +81,7 @@ let state = {
 
 function setState(patch) { state = { ...state, ...patch }; render(); }
 
-// ── Auth helpers ───────────────────────────────────────────────
+// Auth helpers
 function saveAuth(auth) { localStorage.setItem("mc_auth", JSON.stringify(auth)); state.auth = auth; }
 
 async function getValidToken() {
@@ -106,7 +96,7 @@ async function getValidToken() {
 function connectStrava() {
   const clientId = "259701";
   const redirect = encodeURIComponent(window.location.origin + "/api/auth");
-  window.location.href = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirect}&response_type=code&scope=activity:read_all`;
+  window.location.href = "https://www.strava.com/oauth/authorize?client_id=" + clientId + "&redirect_uri=" + redirect + "&response_type=code&scope=activity:read_all";
 }
 
 function handleOAuthParams() {
@@ -117,8 +107,9 @@ function handleOAuthParams() {
   }
 }
 
-// ── API call ───────────────────────────────────────────────────
-async function analyze(mode, extra = "") {
+// API call
+async function analyze(mode, extra) {
+  if (!extra) extra = "";
   setState({ loading:true, error:null, view:"loading" });
   try {
     const token = await getValidToken();
@@ -134,28 +125,31 @@ async function analyze(mode, extra = "") {
   } catch(e) { setState({ loading:false, error:e.message, view:"error" }); }
 }
 
-// ── UI helpers ─────────────────────────────────────────────────
-const css = s => Object.entries(s).map(([k,v])=>`${k.replace(/([A-Z])/g,'-$1').toLowerCase()}:${v}`).join(';');
-function h(tag, attrs, ...children) {
+// UI helpers
+const css = s => Object.entries(s).map(([k,v])=>k.replace(/([A-Z])/g,'-$1').toLowerCase()+':'+v).join(';');
+function h(tag, attrs) {
+  const children = Array.prototype.slice.call(arguments, 2);
   const el = document.createElement(tag);
-  if (attrs) Object.entries(attrs).forEach(([k,v]) => {
+  if (attrs) Object.entries(attrs).forEach(function(e) {
+    const k = e[0], v = e[1];
     if (k==='style' && typeof v==='object') el.style.cssText = css(v);
     else if (k.startsWith('on')) el.addEventListener(k.slice(2).toLowerCase(), v);
     else el.setAttribute(k, v);
   });
-  children.flat().forEach(c => c && el.appendChild(typeof c==='string' ? document.createTextNode(c) : c));
+  children.flat().forEach(function(c) { if (c) el.appendChild(typeof c==='string' ? document.createTextNode(c) : c); });
   return el;
 }
 
-// ── Header ─────────────────────────────────────────────────────
+// Header
 function renderHeader() {
   const days = getDays(), phase = getPhase(days);
-  const next = state.result ? { session: state.result.headline, label: state.result.type } : null;
+  // FIX Safari : toujours lire depuis cache si state.result est null
+  const resultData = state.result || (loadCache() ? loadCache().result : null);
+  const next = resultData ? { session: resultData.headline, label: resultData.type } : null;
 
   return h('div', {style:{padding:'20px 18px 16px',borderBottom:'1px solid #111827',position:'relative'}},
-    // Bouton préférences
     h('button', {
-      onclick: () => setState({ view: 'prefs' }),
+      onclick: function() { setState({ view: 'prefs' }); },
       style:{position:'absolute',top:'16px',right:'18px',background:'none',border:'none',color:'#3b4560',fontSize:'18px',cursor:'pointer',zIndex:'10',padding:'4px',lineHeight:'1'}
     }, '⚙️'),
     h('div', {style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'14px'}},
@@ -164,102 +158,107 @@ function renderHeader() {
         h('div', {style:{display:'flex',alignItems:'baseline',gap:'8px'}},
           h('span', {style:{fontSize:'40px',fontWeight:'900',color:'#fff',letterSpacing:'-2px',lineHeight:'1'}}, String(days)),
           h('span', {style:{fontSize:'13px',color:'#4b5563',fontWeight:'600'}}, 'jours'))),
-      h('div', {style:{display:'flex',alignItems:'center',gap:'7px',background:phase.bg,borderRadius:'20px',padding:'6px 14px',border:`1px solid ${phase.color}30`,marginRight:'32px'}},
-        h('div', {style:{width:'6px',height:'6px',borderRadius:'50%',background:phase.color,boxShadow:`0 0 6px ${phase.color}`}}),
+      h('div', {style:{display:'flex',alignItems:'center',gap:'7px',background:phase.bg,borderRadius:'20px',padding:'6px 14px',border:'1px solid '+phase.color+'30',marginRight:'32px'}},
+        h('div', {style:{width:'6px',height:'6px',borderRadius:'50%',background:phase.color,boxShadow:'0 0 6px '+phase.color}}),
         h('span', {style:{fontSize:'11px',color:phase.color,fontWeight:'700'}}, phase.label))),
-    // Objectif strip
     h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'7px',marginBottom: next ? '10px' : '0'}},
-      ...[ ['Distance','42,2 km','#a78bfa'], ['Objectif',"4h00'00",'#60a5fa'], ['Allure',"5'41\"/km",'#34d399'] ].map(([label,value,color]) =>
-        h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:`2px solid ${color}25`,textAlign:'center'}},
-          h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, label),
-          h('div', {style:{fontSize:'12px',fontWeight:'800',color,lineHeight:'1'}}, value)))),
-    // Prochaine séance pill
-    next && h('div', {
-      onclick: () => setState({ view:'result' }),
+      h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:'2px solid #a78bfa25',textAlign:'center'}},
+        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, 'Distance'),
+        h('div', {style:{fontSize:'12px',fontWeight:'800',color:'#a78bfa',lineHeight:'1'}}, '42,2 km')),
+      h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:'2px solid #60a5fa25',textAlign:'center'}},
+        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, 'Objectif'),
+        h('div', {style:{fontSize:'12px',fontWeight:'800',color:'#60a5fa',lineHeight:'1'}}, "4h00'00")),
+      h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:'2px solid #34d39925',textAlign:'center'}},
+        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, 'Allure'),
+        h('div', {style:{fontSize:'12px',fontWeight:'800',color:'#34d399',lineHeight:'1'}}, "5'41\"/km"))),
+    next ? h('div', {
+      onclick: function() {
+        // FIX Safari : recharge depuis cache avant de naviguer
+        if (!state.result) {
+          const c = loadCache();
+          if (c) state.result = c.result;
+        }
+        setState({ view:'result' });
+      },
       style:{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#0e1118',borderRadius:'10px',padding:'10px 14px',border:'1px solid #1a2035',cursor:'pointer'}},
       h('div', null,
-        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, '📅 Prochaine séance'),
+        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, 'Prochaine seance'),
         h('div', {style:{fontSize:'13px',fontWeight:'700',color:'#a78bfa'}}, next.label + ' · ' + next.session)),
-      h('span', {style:{color:'#2d3748',fontSize:'16px'}}, '›'))
+      h('span', {style:{color:'#2d3748',fontSize:'16px'}}, '>')) : null
   );
 }
 
-// ── Views ──────────────────────────────────────────────────────
+// Views
 function renderHome() {
-  const name = state.auth?.athlete_name || 'Yann';
+  const name = (state.auth && state.auth.athlete_name) ? state.auth.athlete_name : 'Yann';
   const cache = loadCache();
   const week = loadWeeklyPlan();
 
-  const typeColor = {
-    'EF':'#60a5fa', 'Tempo':'#fbbf24', 'Fractionné':'#f87171',
-    'Sortie longue':'#a78bfa', 'Récup':'#34d399', 'Repos':'#374151'
-  };
-  const getColor = s => {
-    if (!s) return '#6b7280';
-    for (const [k,v] of Object.entries(typeColor)) if (s.toLowerCase().includes(k.toLowerCase())) return v;
-    return '#6b7280';
-  };
-
   const btns = [
-    {id:'session',icon:'⚡',label:'Ma prochaine séance',sub:'Analyse Strava · utilise des tokens'},
-    {id:'fatigue',icon:'😮‍💨',label:'Je suis fatigué',   sub:'Adapter la charge · utilise des tokens'},
-    {id:'cross',  icon:'🚴',label:'Autre sport fait',   sub:'Vélo, natation, rando… · utilise des tokens'},
+    {id:'session',icon:'⚡',label:'Ma prochaine seance',sub:'Analyse Strava · utilise des tokens'},
+    {id:'fatigue',icon:'😮',label:'Je suis fatigue',   sub:'Adapter la charge · utilise des tokens'},
+    {id:'cross',  icon:'🚴',label:'Autre sport fait',   sub:'Velo, natation, rando · utilise des tokens'},
   ];
 
-  return h('div', {class:'fade',style:{padding:'20px 18px'}},
-    h('div', {style:{fontSize:'14px',fontWeight:'700',color:'#e2e8f0',marginBottom:'3px'}}, `Bonjour ${name} 👋`),
+  const normalizeRun = function(s) {
+    if (!s) return null;
+    const sl = s.toLowerCase();
+    if (sl.indexOf('fractionn') >= 0 || sl.indexOf('interval') >= 0 || sl.indexOf('vma') >= 0 || sl.indexOf('repet') >= 0) return { label:'Fractionne', color:'#f87171' };
+    if (sl.indexOf('tempo') >= 0 || sl.indexOf('seuil') >= 0 || sl.indexOf('allure marathon') >= 0) return { label:'Tempo', color:'#fbbf24' };
+    if (sl.indexOf('sortie longue') >= 0 || sl.indexOf('long run') >= 0) return { label:'Sortie longue', color:'#a78bfa' };
+    if (sl.indexOf('footing') >= 0 || sl.indexOf('ef ') >= 0 || sl.indexOf('endurance fond') >= 0 || sl.indexOf('recup') >= 0 || sl.indexOf('regen') >= 0) return { label:'Footing', color:'#60a5fa' };
+    return null;
+  };
 
-    !cache && h('div', {style:{fontSize:'12px',color:'#4b5563',marginBottom:'16px'}},'Lance une analyse pour obtenir ta première séance.'),
+  const children = [
+    h('div', {style:{fontSize:'14px',fontWeight:'700',color:'#e2e8f0',marginBottom:'3px'}}, 'Bonjour ' + name + ' 👋'),
+    !cache ? h('div', {style:{fontSize:'12px',color:'#4b5563',marginBottom:'16px'}}, 'Lance une analyse pour obtenir ta premiere seance.') : null
+  ];
 
-    ...btns.map(b => h('button', {
-      onclick:()=> b.id==='cross' ? setState({view:'cross'}) : analyze(b.id),
+  btns.forEach(function(b) {
+    children.push(h('button', {
+      onclick: function() { if (b.id === 'cross') setState({view:'cross'}); else analyze(b.id); },
       style:{width:'100%',display:'flex',alignItems:'center',gap:'14px',background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'16px',marginBottom:'9px',color:'#e2e8f0',textAlign:'left'}},
       h('span', {style:{width:'42px',height:'42px',borderRadius:'12px',background:'#141824',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'20px',flexShrink:'0'}}, b.icon),
       h('div', {style:{flex:'1'}},
         h('div', {style:{fontSize:'14px',fontWeight:'600',marginBottom:'2px'}}, b.label),
         h('div', {style:{fontSize:'11px',color:'#4b5563'}}, b.sub)),
-      h('span', {style:{color:'#2d3748',fontSize:'18px'}}, '›'))),
+      h('span', {style:{color:'#2d3748',fontSize:'18px'}}, '>')));
+  });
 
-    // ── Bloc Ma semaine ────────────────────────────────────────
-    (() => {
-      if (!week) return null;
-      const normalizeRun = s => {
-        if (!s) return null;
-        const sl = s.toLowerCase();
-        if (sl.includes('fractionn') || sl.includes('interval') || sl.includes('vma') || sl.includes('répét')) return { label:'Fractionné', color:'#f87171' };
-        if (sl.includes('tempo') || sl.includes('seuil') || sl.includes('allure marathon') || sl.includes('allure spé')) return { label:'Tempo', color:'#fbbf24' };
-        if (sl.includes('sortie longue') || sl.includes('long run') || sl.includes('sl ')) return { label:'Sortie longue', color:'#a78bfa' };
-        if (sl.includes('footing') || sl.includes('ef ') || sl.includes('endurance fond') || sl.includes('récup') || sl.includes('recup') || sl.includes('régén') || sl.includes('regen')) return { label:'Footing', color:'#60a5fa' };
-        return null;
-      };
-      const runs = week.filter(w => normalizeRun(w.session));
-      if (!runs.length) return null;
-      return h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px'}},
-        h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontWeight:'700'}}, '📅 Ma semaine'),
-        h('div', {style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'2px'}},
-          ...runs.map(w => {
-            const run = normalizeRun(w.session);
-            const km = w.distance || '';
-            return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'60px'}},
-              h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'4px',textTransform:'uppercase',fontWeight:'600'}}, w.day),
-              h('div', {style:{borderRadius:'10px',padding:'8px 6px',background:run.color+'15',border:`1px solid ${run.color}30`,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'4px',minHeight:'56px'}},
-                h('div', {style:{fontSize:'8px',color:run.color,fontWeight:'800',lineHeight:'1.2',textAlign:'center'}}, run.label),
-                km && h('div', {style:{fontSize:'11px',color:'#e2e8f0',fontWeight:'900',lineHeight:'1'}}, km)));
-          })));
-    })(),
+  // Bloc Ma semaine
+  if (week) {
+    const runs = week.filter(function(w) { return normalizeRun(w.session); });
+    if (runs.length) {
+      const cards = runs.map(function(w) {
+        const run = normalizeRun(w.session);
+        // FIX km : priorite a w.distance, sinon extraction depuis session
+        const km = w.distance || extractKm(w.session) || '';
+        return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'64px'}},
+          h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'4px',textTransform:'uppercase',fontWeight:'600'}}, w.day),
+          h('div', {style:{borderRadius:'10px',padding:'8px 6px',background:run.color+'15',border:'1px solid '+run.color+'30',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'3px',minHeight:'66px'}},
+            h('div', {style:{fontSize:'8px',color:run.color,fontWeight:'800',lineHeight:'1.2',textAlign:'center'}}, run.label),
+            km ? h('div', {style:{fontSize:'12px',color:'#e2e8f0',fontWeight:'900',lineHeight:'1',marginTop:'2px'}}, km) : null));
+      });
+      children.push(
+        h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px'}},
+          h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontWeight:'700'}}, 'Ma semaine'),
+          h.apply(null, ['div', {style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'2px'}}].concat(cards))));
+    }
+  }
 
-    h('button', {
-      onclick:()=>{localStorage.removeItem('mc_auth');localStorage.removeItem('mc_last_result');setState({auth:null,result:null,view:'login'});},
-      style:{width:'100%',padding:'12px',background:'transparent',border:'1px dashed #1a2035',borderRadius:'12px',color:'#3b4560',fontSize:'12px',marginTop:'4px'}
-    }, '🔗 Déconnecter Strava'));
+  children.push(h('button', {
+    onclick: function() { localStorage.removeItem('mc_auth'); localStorage.removeItem('mc_last_result'); setState({auth:null,result:null,view:'login'}); },
+    style:{width:'100%',padding:'12px',background:'transparent',border:'1px dashed #1a2035',borderRadius:'12px',color:'#3b4560',fontSize:'12px',marginTop:'4px'}
+  }, 'Deconnecter Strava'));
+
+  return h.apply(null, ['div', {class:'fade',style:{padding:'20px 18px'}}].concat(children));
 }
 
-// ── Préférences ────────────────────────────────────────────────
+// Preferences
 function renderPrefs() {
   const prefs = loadPrefs();
-  // Clone local pour édition sans toucher le state global
-  let draft = { sessions: prefs.sessions, days: [...prefs.days] };
-
+  var draft = { sessions: prefs.sessions, days: prefs.days.slice() };
   const DAY_LABELS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
 
   function buildUI() {
@@ -267,36 +266,41 @@ function renderPrefs() {
     if (!container) return;
     container.innerHTML = '';
 
-    // Nombre de séances
     const sessBlock = document.createElement('div');
     sessBlock.style.cssText = 'background:#0e1118;border:1px solid #1a2035;border-radius:14px;padding:16px;margin-bottom:12px;';
-    sessBlock.innerHTML = `<div style="font-size:9px;color:#3b4560;text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;font-weight:700;">Séances de course / semaine</div>`;
+    const sessTitle = document.createElement('div');
+    sessTitle.style.cssText = 'font-size:9px;color:#3b4560;text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;font-weight:700;';
+    sessTitle.textContent = 'Seances de course / semaine';
+    sessBlock.appendChild(sessTitle);
     const sessRow = document.createElement('div');
     sessRow.style.cssText = 'display:flex;gap:10px;';
-    [3, 4, 5].forEach(n => {
+    [3, 4, 5].forEach(function(n) {
       const btn = document.createElement('button');
       btn.textContent = String(n);
       const active = draft.sessions === n;
-      btn.style.cssText = `flex:1;padding:14px;border-radius:10px;border:2px solid ${active ? '#7c3aed' : '#1a2035'};background:${active ? '#1a0f35' : '#0e1118'};color:${active ? '#a78bfa' : '#4b5563'};font-size:18px;font-weight:800;cursor:pointer;transition:all 0.15s;`;
-      btn.onclick = () => { draft.sessions = n; buildUI(); };
+      btn.style.cssText = 'flex:1;padding:14px;border-radius:10px;border:2px solid '+(active?'#7c3aed':'#1a2035')+';background:'+(active?'#1a0f35':'#0e1118')+';color:'+(active?'#a78bfa':'#4b5563')+';font-size:18px;font-weight:800;cursor:pointer;';
+      btn.onclick = function() { draft.sessions = n; buildUI(); };
       sessRow.appendChild(btn);
     });
     sessBlock.appendChild(sessRow);
     container.appendChild(sessBlock);
 
-    // Jours disponibles
     const daysBlock = document.createElement('div');
     daysBlock.style.cssText = 'background:#0e1118;border:1px solid #1a2035;border-radius:14px;padding:16px;margin-bottom:20px;';
-    daysBlock.innerHTML = `<div style="font-size:9px;color:#3b4560;text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;font-weight:700;">Jours disponibles</div>`;
+    const daysTitle = document.createElement('div');
+    daysTitle.style.cssText = 'font-size:9px;color:#3b4560;text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;font-weight:700;';
+    daysTitle.textContent = 'Jours disponibles';
+    daysBlock.appendChild(daysTitle);
     const daysRow = document.createElement('div');
     daysRow.style.cssText = 'display:grid;grid-template-columns:repeat(7,1fr);gap:6px;';
-    DAY_LABELS.forEach((label, i) => {
-      const active = draft.days.includes(i);
+    DAY_LABELS.forEach(function(label, i) {
+      const active = draft.days.indexOf(i) >= 0;
       const btn = document.createElement('button');
-      btn.style.cssText = `padding:10px 0;border-radius:10px;border:2px solid ${active ? '#7c3aed' : '#1a2035'};background:${active ? '#1a0f35' : '#0e1118'};color:${active ? '#a78bfa' : '#4b5563'};font-size:11px;font-weight:700;cursor:pointer;text-align:center;`;
+      btn.style.cssText = 'padding:10px 0;border-radius:10px;border:2px solid '+(active?'#7c3aed':'#1a2035')+';background:'+(active?'#1a0f35':'#0e1118')+';color:'+(active?'#a78bfa':'#4b5563')+';font-size:11px;font-weight:700;cursor:pointer;text-align:center;';
       btn.textContent = label;
-      btn.onclick = () => {
-        if (draft.days.includes(i)) draft.days = draft.days.filter(d => d !== i);
+      btn.onclick = function() {
+        const idx = draft.days.indexOf(i);
+        if (idx >= 0) draft.days.splice(idx, 1);
         else draft.days.push(i);
         buildUI();
       };
@@ -305,14 +309,11 @@ function renderPrefs() {
     daysBlock.appendChild(daysRow);
     container.appendChild(daysBlock);
 
-    // Résumé
     const summary = document.getElementById('prefs-summary');
     if (summary) {
       const dayNames = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"];
-      const sel = [...draft.days].sort((a,b)=>a-b).map(d => dayNames[d]);
-      summary.textContent = sel.length
-        ? `${draft.sessions} séances · ${sel.join(', ')}`
-        : `${draft.sessions} séances · aucun jour sélectionné`;
+      const sel = draft.days.slice().sort(function(a,b){return a-b;}).map(function(d){return dayNames[d];});
+      summary.textContent = sel.length ? draft.sessions + ' seances · ' + sel.join(', ') : draft.sessions + ' seances · aucun jour selectionne';
     }
   }
 
@@ -320,56 +321,45 @@ function renderPrefs() {
   wrapper.className = 'fade';
   wrapper.style.cssText = 'padding:20px 18px;';
 
-  // Header nav
   const nav = document.createElement('div');
   nav.style.cssText = 'display:flex;align-items:center;gap:12px;margin-bottom:20px;';
   const backBtn = document.createElement('button');
   backBtn.textContent = '←';
   backBtn.style.cssText = 'background:none;border:none;color:#7c3aed;font-size:22px;cursor:pointer;padding:0;line-height:1;';
-  backBtn.onclick = () => setState({ view: 'home' });
+  backBtn.onclick = function() { setState({ view: 'home' }); };
   const title = document.createElement('div');
   title.style.cssText = 'font-size:16px;font-weight:800;color:#e2e8f0;';
-  title.textContent = '⚙️ Préférences';
+  title.textContent = '⚙️ Preferences';
   nav.appendChild(backBtn);
   nav.appendChild(title);
   wrapper.appendChild(nav);
 
-  // Container dynamique
   const container = document.createElement('div');
   container.id = 'prefs-container';
   wrapper.appendChild(container);
 
-  // Résumé
   const summary = document.createElement('div');
   summary.id = 'prefs-summary';
   summary.style.cssText = 'font-size:11px;color:#4b5563;text-align:center;margin-bottom:16px;';
   wrapper.appendChild(summary);
 
-  // Bouton sauvegarder
   const saveBtn = document.createElement('button');
   saveBtn.textContent = '✓ Sauvegarder';
   saveBtn.style.cssText = 'width:100%;padding:16px;background:#7c3aed;color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;';
-  saveBtn.onclick = () => {
+  saveBtn.onclick = function() {
     savePrefsData(draft);
-    // Flash feedback
-    saveBtn.textContent = '✓ Sauvegardé !';
+    saveBtn.textContent = '✓ Sauvegarde !';
     saveBtn.style.background = '#059669';
-    setTimeout(() => {
-      saveBtn.textContent = '✓ Sauvegarder';
-      saveBtn.style.background = '#7c3aed';
-    }, 1800);
+    setTimeout(function() { saveBtn.textContent = '✓ Sauvegarder'; saveBtn.style.background = '#7c3aed'; }, 1800);
   };
   wrapper.appendChild(saveBtn);
 
-  // Info
   const info = document.createElement('div');
   info.style.cssText = 'font-size:11px;color:#2d3748;text-align:center;line-height:1.5;';
-  info.textContent = 'Ces préférences sont injectées dans l\'analyse Claude pour personnaliser tes séances.';
+  info.textContent = 'Ces preferences sont injectees dans l\'analyse Claude pour personnaliser tes seances.';
   wrapper.appendChild(info);
 
-  // Render dynamique après insertion dans le DOM
   setTimeout(buildUI, 0);
-
   return wrapper;
 }
 
@@ -377,7 +367,7 @@ function renderLogin() {
   return h('div', {class:'fade',style:{padding:'40px 18px',textAlign:'center'}},
     h('div', {style:{fontSize:'40px',marginBottom:'16px'}}, '🏃'),
     h('div', {style:{fontSize:'20px',fontWeight:'800',color:'#fff',marginBottom:'8px'}}, 'Marathon Coach'),
-    h('div', {style:{fontSize:'13px',color:'#4b5563',marginBottom:'32px',lineHeight:'1.6'}}, 'Connecte ton compte Strava pour des recommandations basées sur tes vraies données.'),
+    h('div', {style:{fontSize:'13px',color:'#4b5563',marginBottom:'32px',lineHeight:'1.6'}}, 'Connecte ton compte Strava pour des recommandations basees sur tes vraies donnees.'),
     h('button', {onclick:connectStrava,style:{width:'100%',padding:'18px',borderRadius:'14px',background:'#FC4C02',color:'#fff',fontSize:'16px',fontWeight:'700'}}, '🚴 Connecter Strava'));
 }
 
@@ -385,27 +375,28 @@ function renderLoading() {
   return h('div', {style:{display:'flex',flexDirection:'column',alignItems:'center',gap:'16px',padding:'60px 18px'}},
     h('div', {style:{width:'44px',height:'44px',borderRadius:'50%',border:'3px solid #1a2035',borderTopColor:'#a78bfa',animation:'spin 0.8s linear infinite'}}),
     h('div', {style:{fontSize:'13px',color:'#4b5563'}}, 'Analyse Strava en cours…'),
-    h('div', {style:{fontSize:'11px',color:'#2d3748',marginTop:'4px'}}, 'Connexion à Claude AI'));
+    h('div', {style:{fontSize:'11px',color:'#2d3748',marginTop:'4px'}}, 'Connexion a Claude AI'));
 }
 
 function renderError() {
   return h('div', {class:'fade',style:{padding:'20px 18px'}},
     h('div', {style:{background:'#1a0a0a',borderRadius:'14px',padding:'20px',border:'1px solid #3a1515',marginBottom:'16px'}},
-      h('div', {style:{fontSize:'15px',fontWeight:'700',color:'#f87171',marginBottom:'8px'}}, '❌ Erreur'),
+      h('div', {style:{fontSize:'15px',fontWeight:'700',color:'#f87171',marginBottom:'8px'}}, 'Erreur'),
       h('div', {style:{fontSize:'12px',color:'#6b7280',lineHeight:'1.5',wordBreak:'break-word'}}, state.error)),
-    h('button', {onclick:()=>setState({view:'home',error:null}),style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#e2e8f0',fontSize:'14px',fontWeight:'700'}}, '← Retour'));
+    h('button', {onclick:function(){setState({view:'home',error:null});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#e2e8f0',fontSize:'14px',fontWeight:'700'}}, '← Retour'));
 }
 
 function renderCross() {
-  const opts = [['🚴','Vélo'],['🏊','Natation'],['🥾','Rando'],['⚡','Autre']];
+  const opts = [['🚴','Velo'],['🏊','Natation'],['🥾','Rando'],['⚡','Autre']];
   return h('div', {class:'fade',style:{padding:'20px 18px'}},
     h('div', {style:{fontSize:'14px',fontWeight:'700',color:'#e2e8f0',marginBottom:'4px'}}, '🚴 Quel sport as-tu fait ?'),
-    h('div', {style:{fontSize:'12px',color:'#4b5563',marginBottom:'18px'}}, 'Je vais adapter ta prochaine séance.'),
+    h('div', {style:{fontSize:'12px',color:'#4b5563',marginBottom:'18px'}}, 'Je vais adapter ta prochaine seance.'),
     h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'16px'}},
-      ...opts.map(([icon,label]) => h('button', {onclick:()=>analyze('cross',label),style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}},
-        h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, icon),
-        h('div', {style:{fontSize:'13px',fontWeight:'600'}}, label)))),
-    h('button', {onclick:()=>setState({view:'home'}),style:{width:'100%',padding:'15px',borderRadius:'12px',background:'transparent',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px'}}, '← Retour'));
+      h('button', {onclick:function(){analyze('cross','Velo');},style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '🚴'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Velo')),
+      h('button', {onclick:function(){analyze('cross','Natation');},style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '🏊'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Natation')),
+      h('button', {onclick:function(){analyze('cross','Rando');},style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '🥾'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Rando')),
+      h('button', {onclick:function(){analyze('cross','Autre');},style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '⚡'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Autre'))),
+    h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'transparent',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px'}}, '← Retour'));
 }
 
 function renderResult() {
@@ -415,45 +406,61 @@ function renderResult() {
   const cache = loadCache();
   const cacheAge = cache ? Math.round((Date.now() - cache.savedAt) / 3600000) : null;
 
-  const stat = (label,value,color) => h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'13px 12px',borderBottom:`2px solid ${color}35`}},
-    h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, label),
-    h('div', {style:{fontSize:'16px',fontWeight:'800',color,lineHeight:'1'}}, value));
+  const stat = function(label,value,color) {
+    return h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'13px 12px',borderBottom:'2px solid '+color+'35'}},
+      h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, label),
+      h('div', {style:{fontSize:'16px',fontWeight:'800',color:color,lineHeight:'1'}}, value));
+  };
 
-  const row = (icon,label,val) => h('div', {style:{display:'flex',gap:'10px',marginBottom:'10px',alignItems:'flex-start'}},
-    h('span', {style:{fontSize:'14px',flexShrink:'0',marginTop:'1px'}}, icon),
-    h('div', null,
-      h('span', {style:{fontSize:'8px',color:'#3b4560',fontWeight:'700',textTransform:'uppercase',letterSpacing:'1px'}}, label+' · '),
-      h('span', {style:{fontSize:'12px',color:'#6b7280',lineHeight:'1.5'}}, val)));
+  const row = function(icon,label,val) {
+    return h('div', {style:{display:'flex',gap:'10px',marginBottom:'10px',alignItems:'flex-start'}},
+      h('span', {style:{fontSize:'14px',flexShrink:'0',marginTop:'1px'}}, icon),
+      h('div', null,
+        h('span', {style:{fontSize:'8px',color:'#3b4560',fontWeight:'700',textTransform:'uppercase',letterSpacing:'1px'}}, label+' · '),
+        h('span', {style:{fontSize:'12px',color:'#6b7280',lineHeight:'1.5'}}, val)));
+  };
 
-  return h('div', {class:'fade',style:{padding:'20px 18px'}},
-    cacheAge !== null && h('div', {style:{fontSize:'10px',color:'#2d3748',marginBottom:'10px',textAlign:'right'}},
-      `📱 En cache · il y a ${cacheAge < 1 ? "moins d'1h" : cacheAge+'h'}`),
+  const children = [
+    cacheAge !== null ? h('div', {style:{fontSize:'10px',color:'#2d3748',marginBottom:'10px',textAlign:'right'}}, 'En cache · il y a '+(cacheAge < 1 ? "moins d'1h" : cacheAge+'h')) : null,
     h('div', {style:{background:'linear-gradient(135deg,#1a0f35,#0d1a35)',borderRadius:'16px',padding:'20px 18px',marginBottom:'10px',border:'1px solid #2a1f4a'}},
-      h('div', {style:{fontSize:'9px',color:'#4b5563',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'5px',fontWeight:'700'}}, 'Séance recommandée'),
+      h('div', {style:{fontSize:'9px',color:'#4b5563',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'5px',fontWeight:'700'}}, 'Seance recommandee'),
       h('div', {style:{fontSize:'24px',fontWeight:'900',color:'#fff',letterSpacing:'-0.5px',marginBottom:'3px'}}, d.headline),
       h('div', {style:{fontSize:'13px',color:'#6b7280'}}, d.type)),
     h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'10px'}},
       stat('Distance',d.distance,'#a78bfa'), stat('Allure',d.pace,'#60a5fa'),
       stat('FC cible',d.hr,'#f87171'),       stat('RPE',d.rpe,'#fbbf24')),
     h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px',borderLeft:'3px solid #fbbf24'}},
-      h('div', {style:{fontSize:'8px',color:'#78520a',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, '💡 Conseil clé'),
+      h('div', {style:{fontSize:'8px',color:'#78520a',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, 'Conseil cle'),
       h('div', {style:{fontSize:'13px',color:'#fbbf24',lineHeight:'1.5'}}, d.tip)),
     h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
       row('🍌','Avant',d.before), row('💧','Pendant',d.during),
-      row('🥛','Après',d.after), row('👟','Équipement',d.gear)),
-    d.week && h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
+      row('🥛','Apres',d.after), row('👟','Equipement',d.gear))
+  ];
+
+  if (d.week) {
+    const weekCards = d.week.map(function(w) {
+      return h('div', null,
+        h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'5px',textTransform:'uppercase',textAlign:'center',fontWeight:'600'}}, w.day),
+        h('div', {style:{borderRadius:'7px',padding:'5px 2px',background:(w.color||'#374151')+'18',border:'1px solid '+(w.color||'#374151')+'30',fontSize:'7px',color:w.color||'#374151',fontWeight:'700',minHeight:'34px',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:'1.2',textAlign:'center'}}, w.session));
+    });
+    children.push(h.apply(null, ['div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
       h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontWeight:'700'}}, 'Bloc semaine'),
-      h('div', {style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'5px'}},
-        ...d.week.map(w => h('div', null,
-          h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'5px',textTransform:'uppercase',textAlign:'center',fontWeight:'600'}}, w.day),
-          h('div', {style:{borderRadius:'7px',padding:'5px 2px',background:(w.color||'#374151')+'18',border:`1px solid ${(w.color||'#374151')}30`,fontSize:'7px',color:w.color||'#374151',fontWeight:'700',minHeight:'34px',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:'1.2',textAlign:'center'}}, w.session))))),
+      h.apply(null, ['div', {style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'5px'}}].concat(weekCards))
+    ]));
+  }
+
+  children.push(
     h('div', {style:{background:'#080b10',borderRadius:'12px',padding:'14px 16px',marginBottom:'16px',border:'1px dashed #1a2035'}},
-      h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, '🧠 Pourquoi'),
+      h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, 'Pourquoi'),
       h('div', {style:{fontSize:'12px',color:'#4b5563',lineHeight:'1.6'}}, d.why)),
-    h('button', {onclick:()=>setState({view:'home',result:null}),style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px',fontWeight:'600'}}, '← Retour'));
+    // FIX Safari : retour home sans vider result
+    h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px',fontWeight:'600'}}, '← Retour')
+  );
+
+  return h.apply(null, ['div', {class:'fade',style:{padding:'20px 18px'}}].concat(children));
 }
 
-// ── Render ─────────────────────────────────────────────────────
+// Render
 function render() {
   const app = document.getElementById('app');
   app.innerHTML = '';
@@ -462,7 +469,7 @@ function render() {
   app.appendChild((views[state.view]||renderHome)());
 }
 
-// ── Init ───────────────────────────────────────────────────────
+// Init
 handleOAuthParams();
 if (!state.auth) state.view = 'login';
 render();
