@@ -46,6 +46,7 @@ export default async function handler(req, res) {
     week: "Génère le programme complet de la semaine prochaine (7 jours).",
     fatigue: "Yann se sent fatigué. Propose une séance allégée ou repos actif.",
     cross: `Yann vient de faire : ${extra || "un autre sport"}. Adapte la prochaine séance marathon.`,
+    bilan: "Fais un bilan honnête et précis de la situation actuelle de l'athlète.",
   };
 
   // Prompt runs déjà faits cette semaine
@@ -58,7 +59,16 @@ export default async function handler(req, res) {
     ? `\nCOMMENTAIRE DE L'ATHLÈTE (à prendre en compte dans l'analyse) : "${comment.trim()}"`
     : "";
 
-  const schema = `{"headline":"string (3 mots max)","type":"string","distance":"string","pace":"string","hr":"string","rpe":"string","tip":"string (1 phrase)","before":"string","during":"string","after":"string","gear":"string","why":"string (2-3 phrases)","confidence":75,"nextDay":"Lundi","week":[{"day":"Lun","session":"string","color":"#hex"},{"day":"Mar","session":"string","color":"#hex"},{"day":"Mer","session":"string","color":"#hex"},{"day":"Jeu","session":"string","color":"#hex"},{"day":"Ven","session":"string","color":"#hex"},{"day":"Sam","session":"string","color":"#hex"},{"day":"Dim","session":"string","color":"#hex"}]}`;
+  // Schéma selon le mode
+  const isBilan = mode === "bilan";
+
+  const schema = isBilan
+    ? `{"niveau":"string (ex: Intermédiaire, Bon, Insuffisant)","tendance":"string (ex: En progression, Stable, En baisse)","acquis":["string","string","string"],"atravailler":["string","string","string"],"priorites":["string","string","string"],"verdict":"continuer"|"ameliorer"|"downgrade","verdictDetail":"string (2-3 phrases honnêtes sur l'objectif sub-4h)","confidence":75}`
+    : `{"headline":"string (3 mots max)","type":"string","distance":"string","pace":"string","hr":"string","rpe":"string","tip":"string (1 phrase)","before":"string","during":"string","after":"string","gear":"string","why":"string (2-3 phrases)","confidence":75,"nextDay":"Lundi","week":[{"day":"Lun","session":"string","color":"#hex"},{"day":"Mar","session":"string","color":"#hex"},{"day":"Mer","session":"string","color":"#hex"},{"day":"Jeu","session":"string","color":"#hex"},{"day":"Ven","session":"string","color":"#hex"},{"day":"Sam","session":"string","color":"#hex"},{"day":"Dim","session":"string","color":"#hex"}]}`;
+
+  const systemPrompt = isBilan
+    ? `Tu es un coach marathon expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : Yann · 73kg · Nice · objectif sub-4h · Marathon de Nice 14 sept 2026 · ${daysLeft} jours restants.${commentPrompt} Sois honnête et précis, ne surestimation pas le niveau. Schéma JSON : ${schema} — "confidence" est un entier 0-100 représentant ta confiance dans l'objectif sub-4h. "verdict" est exactement l'une des trois valeurs : "continuer", "ameliorer" ou "downgrade". "acquis", "atravailler" et "priorites" sont des tableaux de 3 strings courtes.`
+    : `Tu es un coach marathon expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : Yann · 73kg · Nice · sub-4h · Marathon de Nice 14 sept 2026 · ${daysLeft} jours restants.${prefsPrompt || ""}${runsWeekPrompt}${commentPrompt} Schéma JSON : ${schema} — Le champ "confidence" est un entier entre 0 et 100 représentant ta confiance dans l'atteinte de l'objectif sub-4h compte tenu de la progression actuelle. Le champ "nextDay" est le jour de la semaine en français (ex: "Lundi", "Mardi"...) où doit avoir lieu la prochaine séance.`;
 
   const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -70,7 +80,7 @@ export default async function handler(req, res) {
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
-      system: `Tu es un coach marathon expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : Yann · 73kg · Nice · sub-4h · Marathon de Nice 14 sept 2026 · ${daysLeft} jours restants.${prefsPrompt || ""}${runsWeekPrompt}${commentPrompt} Schéma JSON : ${schema} — Le champ "confidence" est un entier entre 0 et 100 représentant ta confiance dans l'atteinte de l'objectif sub-4h compte tenu de la progression actuelle. Le champ "nextDay" est le jour de la semaine en français (ex: "Lundi", "Mardi"...) où doit avoir lieu la prochaine séance.`,
+      system: systemPrompt,
       messages: [{
         role: "user",
         content: `Activités Strava récentes :\n${activitySummary}\n\n${modePrompts[mode] || modePrompts.session}`,
@@ -86,6 +96,7 @@ export default async function handler(req, res) {
 
   try {
     const result = JSON.parse(raw.slice(start, end + 1));
+    result._mode = mode; // permet au front de distinguer bilan vs séance
     res.json({ result, activities: activities.slice(0, 5).map(a => ({
       date: new Date(a.start_date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }),
       type: a.type,
