@@ -16,10 +16,48 @@
     @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
     @keyframes spin { to { transform: rotate(360deg); } }
     .fade { animation: fadeUp 0.35s ease both; }
+
+    /* Dialog overlay */
+    .dialog-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+      display: flex; align-items: flex-end; justify-content: center;
+      z-index: 100; padding: 0 0 env(safe-area-inset-bottom);
+      animation: fadeUp 0.2s ease both;
+    }
+    .dialog-box {
+      background: #1e293b; border-radius: 20px 20px 0 0;
+      padding: 24px 20px 32px; width: 100%; max-width: 430px;
+      border-top: 1px solid #2d3748;
+    }
+    .dialog-title { font-size: 15px; font-weight: 700; color: #e2e8f0; margin-bottom: 6px; }
+    .dialog-sub { font-size: 12px; color: #4b5563; margin-bottom: 16px; line-height: 1.5; }
+    .dialog-textarea {
+      width: 100%; background: #0e1118; border: 1px solid #2d3748; border-radius: 12px;
+      color: #e2e8f0; font-size: 14px; font-family: inherit; padding: 14px;
+      resize: none; outline: none; line-height: 1.5; min-height: 100px;
+    }
+    .dialog-textarea:focus { border-color: #7c3aed; }
+    .dialog-actions { display: flex; gap: 10px; margin-top: 12px; }
+    .dialog-btn-cancel { flex: 1; padding: 14px; background: transparent; border: 1px solid #2d3748; border-radius: 12px; color: #6b7280; font-size: 14px; font-weight: 600; }
+    .dialog-btn-ok { flex: 2; padding: 14px; background: #7c3aed; border-radius: 12px; color: #fff; font-size: 14px; font-weight: 700; }
+
+    /* Confirm dialog */
+    .confirm-box {
+      background: #1e293b; border-radius: 20px 20px 0 0;
+      padding: 28px 20px 32px; width: 100%; max-width: 430px;
+      border-top: 1px solid #2d3748; text-align: center;
+    }
+    .confirm-icon { font-size: 32px; margin-bottom: 12px; }
+    .confirm-title { font-size: 16px; font-weight: 700; color: #e2e8f0; margin-bottom: 8px; }
+    .confirm-sub { font-size: 13px; color: #4b5563; margin-bottom: 24px; line-height: 1.5; }
+    .confirm-actions { display: flex; gap: 10px; }
+    .confirm-btn-cancel { flex: 1; padding: 14px; background: transparent; border: 1px solid #2d3748; border-radius: 12px; color: #6b7280; font-size: 14px; font-weight: 600; }
+    .confirm-btn-ok { flex: 1; padding: 14px; background: #ef4444; border-radius: 12px; color: #fff; font-size: 14px; font-weight: 700; }
   </style>
 </head>
 <body>
 <div id="app"></div>
+<div id="overlay-root"></div>
 <script>
 const RACE_DATE = new Date("2026-09-14T08:00:00");
 const getDays = () => Math.max(0, Math.ceil((RACE_DATE - new Date()) / 86400000));
@@ -31,6 +69,7 @@ const getPhase = d => {
 };
 
 const DAYS_FR = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
+const FULL_DAYS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
 const MONTHS_FR = ["jan","fev","mar","avr","mai","juin","juil","aout","sep","oct","nov","dec"];
 
 // Cache helpers
@@ -45,6 +84,13 @@ function saveWeeklyPlan(week) {
 }
 function loadWeeklyPlan() {
   try { return JSON.parse(localStorage.getItem("mc_weekly_plan") || "null"); } catch { return null; }
+}
+function saveConfidence(val) {
+  if (val !== undefined && val !== null) localStorage.setItem("mc_confidence", String(val));
+}
+function loadConfidence() {
+  const v = localStorage.getItem("mc_confidence");
+  return v !== null ? parseInt(v) : null;
 }
 
 // Prefs helpers
@@ -66,6 +112,119 @@ function extractKm(session) {
   if (!session) return '';
   const m = session.match(/(\d+(?:[.,]\d+)?)\s*km/i);
   return m ? m[1] + 'km' : '';
+}
+
+// Overlay helpers
+function showOverlay(el) {
+  const root = document.getElementById('overlay-root');
+  root.innerHTML = '';
+  root.appendChild(el);
+}
+function clearOverlay() {
+  const root = document.getElementById('overlay-root');
+  root.innerHTML = '';
+}
+
+// Dialog commentaire
+function showCommentDialog(onConfirm) {
+  const overlay = document.createElement('div');
+  overlay.className = 'dialog-overlay';
+  overlay.onclick = function(e) { if (e.target === overlay) clearOverlay(); };
+
+  const box = document.createElement('div');
+  box.className = 'dialog-box';
+
+  const title = document.createElement('div');
+  title.className = 'dialog-title';
+  title.textContent = '💬 Ajouter un commentaire';
+  const sub = document.createElement('div');
+  sub.className = 'dialog-sub';
+  sub.textContent = 'Contraintes, fatigue particulière, contexte... Claude en tiendra compte dans l\'analyse.';
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'dialog-textarea';
+  textarea.placeholder = 'Ex : J\'ai mal au mollet gauche depuis hier, grosse semaine de travail...';
+  // Pré-remplir avec commentaire sauvé si présent
+  const savedComment = localStorage.getItem('mc_pending_comment') || '';
+  textarea.value = savedComment;
+
+  const actions = document.createElement('div');
+  actions.className = 'dialog-actions';
+
+  const btnCancel = document.createElement('button');
+  btnCancel.className = 'dialog-btn-cancel';
+  btnCancel.textContent = 'Annuler';
+  btnCancel.onclick = function() { clearOverlay(); onConfirm(null); };
+
+  const btnOk = document.createElement('button');
+  btnOk.className = 'dialog-btn-ok';
+  btnOk.textContent = '→ Lancer l\'analyse';
+  btnOk.onclick = function() {
+    const val = textarea.value.trim();
+    localStorage.setItem('mc_pending_comment', val);
+    clearOverlay();
+    onConfirm(val);
+  };
+
+  actions.appendChild(btnCancel);
+  actions.appendChild(btnOk);
+  box.appendChild(title);
+  box.appendChild(sub);
+  box.appendChild(textarea);
+  box.appendChild(actions);
+  overlay.appendChild(box);
+  showOverlay(overlay);
+  setTimeout(function() { textarea.focus(); }, 100);
+}
+
+// Dialog confirmation déconnexion
+function showDisconnectConfirm() {
+  const overlay = document.createElement('div');
+  overlay.className = 'dialog-overlay';
+  overlay.onclick = function(e) { if (e.target === overlay) clearOverlay(); };
+
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+
+  const icon = document.createElement('div');
+  icon.className = 'confirm-icon';
+  icon.textContent = '🔌';
+  const title = document.createElement('div');
+  title.className = 'confirm-title';
+  title.textContent = 'Déconnecter Strava ?';
+  const sub = document.createElement('div');
+  sub.className = 'confirm-sub';
+  sub.textContent = 'Ton historique d\'analyse sera effacé. Tu devras te reconnecter pour utiliser l\'app.';
+
+  const actions = document.createElement('div');
+  actions.className = 'confirm-actions';
+
+  const btnCancel = document.createElement('button');
+  btnCancel.className = 'confirm-btn-cancel';
+  btnCancel.textContent = 'Annuler';
+  btnCancel.onclick = function() { clearOverlay(); };
+
+  const btnOk = document.createElement('button');
+  btnOk.className = 'confirm-btn-ok';
+  btnOk.textContent = 'Déconnecter';
+  btnOk.onclick = function() {
+    clearOverlay();
+    localStorage.removeItem('mc_auth');
+    localStorage.removeItem('mc_last_result');
+    localStorage.removeItem('mc_weekly_plan');
+    localStorage.removeItem('mc_confidence');
+    localStorage.removeItem('mc_pending_comment');
+    setState({ auth: null, result: null, view: 'login' });
+  };
+
+  actions.appendChild(btnCancel);
+  actions.appendChild(btnOk);
+  box.appendChild(icon);
+  box.appendChild(title);
+  box.appendChild(sub);
+  box.appendChild(actions);
+  overlay.appendChild(box);
+  showOverlay(overlay);
 }
 
 // State
@@ -107,19 +266,27 @@ function handleOAuthParams() {
   }
 }
 
-// API call
-async function analyze(mode, extra) {
+// API call — avec commentaire
+function analyzeWithComment(mode, extra) {
+  showCommentDialog(function(comment) {
+    analyze(mode, extra, comment);
+  });
+}
+
+async function analyze(mode, extra, comment) {
   if (!extra) extra = "";
+  if (!comment) comment = "";
   setState({ loading:true, error:null, view:"loading" });
   try {
     const token = await getValidToken();
     if (!token) { setState({ loading:false, view:"login" }); return; }
     const prefs = loadPrefs();
     const prefsPrompt = getPrefsPrompt(prefs);
-    const res = await fetch("/api/analyze", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ access_token:token, mode, extra, prefsPrompt }) });
+    const res = await fetch("/api/analyze", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ access_token:token, mode, extra, prefsPrompt, comment }) });
     const data = await res.json();
     if (!res.ok || !data.result) throw new Error(data.error || "Erreur serveur");
     if (data.result.week) saveWeeklyPlan(data.result.week);
+    if (data.result.confidence !== undefined) saveConfidence(data.result.confidence);
     saveCache(data.result);
     setState({ loading:false, result:data.result, savedAt:Date.now(), view:"result" });
   } catch(e) { setState({ loading:false, error:e.message, view:"error" }); }
@@ -140,12 +307,19 @@ function h(tag, attrs) {
   return el;
 }
 
+// Confidence color
+function confidenceColor(v) {
+  if (v >= 75) return '#34d399';
+  if (v >= 50) return '#fbbf24';
+  return '#f87171';
+}
+
 // Header
 function renderHeader() {
   const days = getDays(), phase = getPhase(days);
-  // FIX Safari : toujours lire depuis cache si state.result est null
   const resultData = state.result || (loadCache() ? loadCache().result : null);
-  const next = resultData ? { session: resultData.headline, label: resultData.type } : null;
+  const next = resultData ? { session: resultData.headline, label: resultData.type, nextDay: resultData.nextDay } : null;
+  const confidence = loadConfidence();
 
   return h('div', {style:{padding:'20px 18px 16px',borderBottom:'1px solid #111827',position:'relative'}},
     h('button', {
@@ -161,7 +335,7 @@ function renderHeader() {
       h('div', {style:{display:'flex',alignItems:'center',gap:'7px',background:phase.bg,borderRadius:'20px',padding:'6px 14px',border:'1px solid '+phase.color+'30',marginRight:'32px'}},
         h('div', {style:{width:'6px',height:'6px',borderRadius:'50%',background:phase.color,boxShadow:'0 0 6px '+phase.color}}),
         h('span', {style:{fontSize:'11px',color:phase.color,fontWeight:'700'}}, phase.label))),
-    h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'7px',marginBottom: next ? '10px' : '0'}},
+    h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'7px',marginBottom:(confidence !== null || next) ? '10px' : '0'}},
       h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:'2px solid #a78bfa25',textAlign:'center'}},
         h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, 'Distance'),
         h('div', {style:{fontSize:'12px',fontWeight:'800',color:'#a78bfa',lineHeight:'1'}}, '42,2 km')),
@@ -171,9 +345,15 @@ function renderHeader() {
       h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:'2px solid #34d39925',textAlign:'center'}},
         h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, 'Allure'),
         h('div', {style:{fontSize:'12px',fontWeight:'800',color:'#34d399',lineHeight:'1'}}, "5'41\"/km"))),
+    // Indice de confiance sous l'objectif
+    confidence !== null ? h('div', {style:{display:'flex',alignItems:'center',gap:'10px',background:'#0e1118',borderRadius:'10px',padding:'9px 14px',marginBottom: next ? '10px' : '0',border:'1px solid #1a2035'}},
+      h('div', {style:{flex:'1'}},
+        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, 'Indice de confiance'),
+        h('div', {style:{height:'4px',background:'#1a2035',borderRadius:'2px',overflow:'hidden'}},
+          h('div', {style:{height:'100%',width:confidence+'%',background:confidenceColor(confidence),borderRadius:'2px',transition:'width 0.6s ease'}}))),
+      h('div', {style:{fontSize:'18px',fontWeight:'900',color:confidenceColor(confidence),lineHeight:'1',minWidth:'36px',textAlign:'right'}}, confidence + '/100')) : null,
     next ? h('div', {
       onclick: function() {
-        // FIX Safari : recharge depuis cache avant de naviguer
         if (!state.result) {
           const c = loadCache();
           if (c) state.result = c.result;
@@ -182,7 +362,7 @@ function renderHeader() {
       },
       style:{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#0e1118',borderRadius:'10px',padding:'10px 14px',border:'1px solid #1a2035',cursor:'pointer'}},
       h('div', null,
-        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, 'Prochaine seance'),
+        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, next.nextDay ? 'Prochaine seance · ' + next.nextDay : 'Prochaine seance'),
         h('div', {style:{fontSize:'13px',fontWeight:'700',color:'#a78bfa'}}, next.label + ' · ' + next.session)),
       h('span', {style:{color:'#2d3748',fontSize:'16px'}}, '>')) : null
   );
@@ -217,7 +397,10 @@ function renderHome() {
 
   btns.forEach(function(b) {
     children.push(h('button', {
-      onclick: function() { if (b.id === 'cross') setState({view:'cross'}); else analyze(b.id); },
+      onclick: function() {
+        if (b.id === 'cross') setState({view:'cross'});
+        else analyzeWithComment(b.id);
+      },
       style:{width:'100%',display:'flex',alignItems:'center',gap:'14px',background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'16px',marginBottom:'9px',color:'#e2e8f0',textAlign:'left'}},
       h('span', {style:{width:'42px',height:'42px',borderRadius:'12px',background:'#141824',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'20px',flexShrink:'0'}}, b.icon),
       h('div', {style:{flex:'1'}},
@@ -232,7 +415,6 @@ function renderHome() {
     if (runs.length) {
       const cards = runs.map(function(w) {
         const run = normalizeRun(w.session);
-        // FIX km : priorite a w.distance, sinon extraction depuis session
         const km = w.distance || extractKm(w.session) || '';
         return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'64px'}},
           h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'4px',textTransform:'uppercase',fontWeight:'600'}}, w.day),
@@ -248,7 +430,7 @@ function renderHome() {
   }
 
   children.push(h('button', {
-    onclick: function() { localStorage.removeItem('mc_auth'); localStorage.removeItem('mc_last_result'); setState({auth:null,result:null,view:'login'}); },
+    onclick: function() { showDisconnectConfirm(); },
     style:{width:'100%',padding:'12px',background:'transparent',border:'1px dashed #1a2035',borderRadius:'12px',color:'#3b4560',fontSize:'12px',marginTop:'4px'}
   }, 'Deconnecter Strava'));
 
@@ -387,15 +569,14 @@ function renderError() {
 }
 
 function renderCross() {
-  const opts = [['🚴','Velo'],['🏊','Natation'],['🥾','Rando'],['⚡','Autre']];
   return h('div', {class:'fade',style:{padding:'20px 18px'}},
     h('div', {style:{fontSize:'14px',fontWeight:'700',color:'#e2e8f0',marginBottom:'4px'}}, '🚴 Quel sport as-tu fait ?'),
     h('div', {style:{fontSize:'12px',color:'#4b5563',marginBottom:'18px'}}, 'Je vais adapter ta prochaine seance.'),
     h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'16px'}},
-      h('button', {onclick:function(){analyze('cross','Velo');},style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '🚴'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Velo')),
-      h('button', {onclick:function(){analyze('cross','Natation');},style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '🏊'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Natation')),
-      h('button', {onclick:function(){analyze('cross','Rando');},style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '🥾'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Rando')),
-      h('button', {onclick:function(){analyze('cross','Autre');},style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '⚡'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Autre'))),
+      h('button', {onclick:function(){ showCommentDialog(function(c){ analyze('cross','Velo',c); }); },style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '🚴'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Velo')),
+      h('button', {onclick:function(){ showCommentDialog(function(c){ analyze('cross','Natation',c); }); },style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '🏊'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Natation')),
+      h('button', {onclick:function(){ showCommentDialog(function(c){ analyze('cross','Rando',c); }); },style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '🥾'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Rando')),
+      h('button', {onclick:function(){ showCommentDialog(function(c){ analyze('cross','Autre',c); }); },style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '⚡'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Autre'))),
     h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'transparent',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px'}}, '← Retour'));
 }
 
@@ -423,7 +604,7 @@ function renderResult() {
   const children = [
     cacheAge !== null ? h('div', {style:{fontSize:'10px',color:'#2d3748',marginBottom:'10px',textAlign:'right'}}, 'En cache · il y a '+(cacheAge < 1 ? "moins d'1h" : cacheAge+'h')) : null,
     h('div', {style:{background:'linear-gradient(135deg,#1a0f35,#0d1a35)',borderRadius:'16px',padding:'20px 18px',marginBottom:'10px',border:'1px solid #2a1f4a'}},
-      h('div', {style:{fontSize:'9px',color:'#4b5563',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'5px',fontWeight:'700'}}, 'Seance recommandee'),
+      h('div', {style:{fontSize:'9px',color:'#4b5563',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'5px',fontWeight:'700'}}, d.nextDay ? 'Seance recommandee · ' + d.nextDay : 'Seance recommandee'),
       h('div', {style:{fontSize:'24px',fontWeight:'900',color:'#fff',letterSpacing:'-0.5px',marginBottom:'3px'}}, d.headline),
       h('div', {style:{fontSize:'13px',color:'#6b7280'}}, d.type)),
     h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'10px'}},
@@ -453,7 +634,6 @@ function renderResult() {
     h('div', {style:{background:'#080b10',borderRadius:'12px',padding:'14px 16px',marginBottom:'16px',border:'1px dashed #1a2035'}},
       h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, 'Pourquoi'),
       h('div', {style:{fontSize:'12px',color:'#4b5563',lineHeight:'1.6'}}, d.why)),
-    // FIX Safari : retour home sans vider result
     h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px',fontWeight:'600'}}, '← Retour')
   );
 
