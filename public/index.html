@@ -386,8 +386,6 @@ function renderHeader() {
       const ageLabel = bilanAge < 1 ? "< 1h" : bilanAge + 'h';
       return h('div', {
         onclick: function() {
-          const cached2 = loadBilan();
-          if (cached2) state.result = cached2.result;
           setState({ view:'bilan' });
         },
         style:{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#0a0d14',borderRadius:'10px',padding:'9px 14px',border:'1px solid #151c2a',cursor:'pointer'}},
@@ -674,7 +672,7 @@ function renderResult() {
 
 function renderBilan() {
   const cached3 = loadBilan();
-  const d = (state.result && state.result._mode === 'bilan') ? state.result : (cached3 ? cached3.result : null);
+  const d = cached3 ? cached3.result : null;
   if (!d) return renderHome();
   const cacheAge = cached3 ? Math.round((Date.now() - cached3.savedAt) / 3600000) : null;
 
