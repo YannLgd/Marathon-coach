@@ -92,6 +92,12 @@ function loadConfidence() {
   const v = localStorage.getItem("mc_confidence");
   return v !== null ? parseInt(v) : null;
 }
+function saveBilan(result) {
+  localStorage.setItem("mc_last_bilan", JSON.stringify({ result, savedAt: Date.now() }));
+}
+function loadBilan() {
+  try { return JSON.parse(localStorage.getItem("mc_last_bilan") || "null"); } catch { return null; }
+}
 
 // Prefs helpers
 function loadPrefs() {
@@ -287,8 +293,13 @@ async function analyze(mode, extra, comment) {
     if (!res.ok || !data.result) throw new Error(data.error || "Erreur serveur");
     if (data.result.week) saveWeeklyPlan(data.result.week);
     if (data.result.confidence !== undefined) saveConfidence(data.result.confidence);
-    saveCache(data.result);
-    setState({ loading:false, result:data.result, savedAt:Date.now(), view:"result" });
+    if (data.result._mode === 'bilan') {
+      saveBilan(data.result);
+      setState({ loading:false, result:data.result, savedAt:Date.now(), view:"bilan" });
+    } else {
+      saveCache(data.result);
+      setState({ loading:false, result:data.result, savedAt:Date.now(), view:"result" });
+    }
   } catch(e) { setState({ loading:false, error:e.message, view:"error" }); }
 }
 
@@ -378,6 +389,7 @@ function renderHome() {
     {id:'session',icon:'⚡',label:'Ma prochaine seance',sub:'Analyse Strava · utilise des tokens'},
     {id:'fatigue',icon:'😮',label:'Je suis fatigue',   sub:'Adapter la charge · utilise des tokens'},
     {id:'cross',  icon:'🚴',label:'Autre sport fait',   sub:'Velo, natation, rando · utilise des tokens'},
+    {id:'bilan',  icon:'🔍',label:'Analyse de situation', sub:'Bilan honnete de ta progression · utilise des tokens'},
   ];
 
   const normalizeRun = function(s) {
@@ -640,12 +652,76 @@ function renderResult() {
   return h.apply(null, ['div', {class:'fade',style:{padding:'20px 18px'}}].concat(children));
 }
 
+function renderBilan() {
+  const cached3 = loadBilan();
+  const d = (state.result && state.result._mode === 'bilan') ? state.result : (cached3 ? cached3.result : null);
+  if (!d) return renderHome();
+  const cacheAge = cached3 ? Math.round((Date.now() - cached3.savedAt) / 3600000) : null;
+
+  const verdictConfig = {
+    continuer: { label: 'Continuer sur sub-4h', color: '#34d399', bg: '#032118', icon: '✅' },
+    ameliorer:  { label: 'Objectif améliorable', color: '#60a5fa', bg: '#0d1f3c', icon: '🚀' },
+    downgrade:  { label: 'Revoir à la baisse',   color: '#f87171', bg: '#1a0505', icon: '⚠️' },
+  };
+  const verdict = verdictConfig[d.verdict] || verdictConfig.continuer;
+  const conf = d.confidence !== undefined ? d.confidence : null;
+
+  function tag(text, color) {
+    return h('div', {style:{display:'inline-flex',alignItems:'center',background:color+'18',border:'1px solid '+color+'35',borderRadius:'8px',padding:'6px 10px',fontSize:'12px',color:color,fontWeight:'600',lineHeight:'1.3'}}, text);
+  }
+
+  function section(title, items, color) {
+    return h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
+      h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'10px',fontWeight:'700'}}, title),
+      h('div', {style:{display:'flex',flexDirection:'column',gap:'7px'}},
+        ...(items || []).map(function(item) {
+          return h('div', {style:{display:'flex',alignItems:'flex-start',gap:'8px'}},
+            h('div', {style:{width:'6px',height:'6px',borderRadius:'50%',background:color,flexShrink:'0',marginTop:'5px'}}),
+            h('div', {style:{fontSize:'13px',color:'#c4cdd8',lineHeight:'1.4'}}, item));
+        })));
+  }
+
+  const children = [
+    cacheAge !== null ? h('div', {style:{fontSize:'10px',color:'#2d3748',marginBottom:'10px',textAlign:'right'}}, 'En cache · il y a '+(cacheAge < 1 ? "moins d'1h" : cacheAge+'h')) : null,
+
+    // Niveau + tendance
+    h('div', {style:{background:'linear-gradient(135deg,#1a0f35,#0d1a35)',borderRadius:'16px',padding:'18px',marginBottom:'10px',border:'1px solid #2a1f4a'}},
+      h('div', {style:{fontSize:'9px',color:'#4b5563',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'10px',fontWeight:'700'}}, 'Situation actuelle'),
+      h('div', {style:{display:'flex',gap:'8px',flexWrap:'wrap'}},
+        tag(d.niveau || '–', '#a78bfa'),
+        tag(d.tendance || '–', '#60a5fa'))),
+
+    // Acquis / À travailler
+    section('✅ Points acquis', d.acquis, '#34d399'),
+    section('⚠️ À travailler', d.atravailler, '#fbbf24'),
+    section('🎯 Priorités des 4 prochaines semaines', d.priorites, '#a78bfa'),
+
+    // Verdict
+    h('div', {style:{background:verdict.bg,borderRadius:'12px',padding:'16px',marginBottom:'10px',border:'1px solid '+verdict.color+'40'}},
+      h('div', {style:{fontSize:'8px',color:verdict.color+'99',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'6px',fontWeight:'700'}}, 'Verdict objectif'),
+      h('div', {style:{fontSize:'14px',fontWeight:'800',color:verdict.color,marginBottom:'8px'}}, verdict.icon + ' ' + verdict.label),
+      h('div', {style:{fontSize:'12px',color:'#6b7280',lineHeight:'1.6'}}, d.verdictDetail)),
+
+    // Confiance
+    conf !== null ? h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px',display:'flex',alignItems:'center',gap:'12px'}},
+      h('div', {style:{flex:'1'}},
+        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'6px',fontWeight:'700'}}, 'Indice de confiance'),
+        h('div', {style:{height:'4px',background:'#1a2035',borderRadius:'2px',overflow:'hidden'}},
+          h('div', {style:{height:'100%',width:conf+'%',background:confidenceColor(conf),borderRadius:'2px'}}))),
+      h('div', {style:{fontSize:'20px',fontWeight:'900',color:confidenceColor(conf),minWidth:'44px',textAlign:'right'}}, conf+'/100')) : null,
+
+    h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px',fontWeight:'600'}}, '← Retour')
+  ];
+
+  return h.apply(null, ['div', {class:'fade',style:{padding:'20px 18px'}}].concat(children));
+}
+
 // Render
 function render() {
   const app = document.getElementById('app');
   app.innerHTML = '';
   app.appendChild(renderHeader());
-  const views = { home:renderHome, login:renderLogin, loading:renderLoading, error:renderError, cross:renderCross, result:renderResult, prefs:renderPrefs };
+  const views = { home:renderHome, login:renderLogin, loading:renderLoading, error:renderError, cross:renderCross, result:renderResult, prefs:renderPrefs, bilan:renderBilan };
   app.appendChild((views[state.view]||renderHome)());
 }
 
