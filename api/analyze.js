@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   // Mode spécial : récupérer l'historique volume sur 12 semaines
   if (mode === "volume_history") {
     const since = new Date();
-    since.setDate(since.getDate() - 84); // 12 semaines
+    since.setDate(since.getDate() - 84);
     const epoch = Math.floor(since.getTime() / 1000);
     const stravaRes = await fetch(
       `https://www.strava.com/api/v3/athlete/activities?per_page=100&after=${epoch}`,
@@ -20,7 +20,6 @@ export default async function handler(req, res) {
       a.type === "Run" || a.type === "TrailRun" ||
       a.sport_type === "Run" || a.sport_type === "TrailRun"
     );
-    // Grouper par semaine ISO (lundi = début)
     const weekMap = {};
     runs.forEach(a => {
       const d = new Date(a.start_date);
@@ -45,11 +44,10 @@ export default async function handler(req, res) {
   const RACE_DATE = new Date("2026-09-14T08:00:00");
   const daysLeft = Math.ceil((RACE_DATE - new Date()) / 86400000);
 
-  // Objectif personnalisé ou défaut
   const obj = objective || { distance: "42,2 km", time: "4h00", pace: "5'41\"/km" };
   const objectiveStr = `objectif ${obj.time} · allure ${obj.pace} · ${obj.distance}`;
 
-  // Calcul des runs déjà effectués cette semaine (lundi = début semaine)
+  // Runs déjà effectués cette semaine
   const now = new Date();
   const dayOfWeek = now.getDay();
   const diffToMonday = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
@@ -84,8 +82,8 @@ export default async function handler(req, res) {
   };
 
   const runsWeekPrompt = runsThisWeekCount > 0
-    ? `\nATTENTION : Yann a déjà effectué ${runsThisWeekCount} séance(s) de course cette semaine (depuis lundi). Le champ week[] doit donc contenir exactement (sessions_total - ${runsThisWeekCount}) séances de course restantes, en ne planifiant que les jours qui n'ont pas encore eu lieu.`
-    : "";
+    ? `\nATTENTION : Yann a déjà effectué ${runsThisWeekCount} séance(s) de course cette semaine (depuis lundi). RÈGLES OBLIGATOIRES pour week[] : (1) Toujours exactement 7 entrées, de Lun à Dim. (2) Le nombre TOTAL de séances de course dans week[] = nombre de séances dans les préférences (EXACTEMENT). (3) Les ${runsThisWeekCount} run(s) déjà faits cette semaine doivent figurer dans week[] avec "done":true sur le bon jour. (4) Les séances de course restantes à planifier = préférences - ${runsThisWeekCount}. Les autres jours = Repos ou cross-training.`
+    : `\nRÈGLE OBLIGATOIRE : week[] doit TOUJOURS contenir exactement 7 entrées, une par jour de Lun à Dim. Les jours sans course = Repos.`;
 
   const commentPrompt = comment && comment.trim()
     ? `\nCOMMENTAIRE DE L'ATHLÈTE (à prendre en compte dans l'analyse) : "${comment.trim()}"`
@@ -94,12 +92,12 @@ export default async function handler(req, res) {
   const isBilan = mode === "bilan";
 
   const schema = isBilan
-    ? `{"niveau":"string (ex: Intermédiaire, Bon, Insuffisant)","tendance":"string (ex: En progression, Stable, En baisse)","acquis":["string","string","string"],"atravailler":["string","string","string"],"priorites":["string","string","string"],"verdict":"continuer"|"ameliorer"|"downgrade","verdictDetail":"string (2-3 phrases honnêtes sur l'objectif)","confidence":75}`
-    : `{"headline":"string (3 mots max)","type":"string","distance":"string","pace":"string","hr":"string","rpe":"string","tip":"string (1 phrase)","before":"string","during":"string","after":"string","gear":"string","why":"string (2-3 phrases)","confidence":75,"nextDay":"Lundi","week":[{"day":"Lun","session":"string","color":"#hex"},{"day":"Mar","session":"string","color":"#hex"},{"day":"Mer","session":"string","color":"#hex"},{"day":"Jeu","session":"string","color":"#hex"},{"day":"Ven","session":"string","color":"#hex"},{"day":"Sam","session":"string","color":"#hex"},{"day":"Dim","session":"string","color":"#hex"}]}`;
+    ? `{"niveau":"string","tendance":"string","acquis":["string","string","string"],"atravailler":["string","string","string"],"priorites":["string","string","string"],"verdict":"continuer"|"ameliorer"|"downgrade","verdictDetail":"string (2-3 phrases)","confidence":75}`
+    : `{"headline":"string (3 mots max)","type":"string","distance":"string","pace":"string","hr":"string","rpe":"string","tip":"string (1 phrase)","before":"string","during":"string","after":"string","gear":"string","why":"string (2-3 phrases)","confidence":75,"nextDay":"Lundi","week":[{"day":"Lun","session":"string","color":"#hex","done":false},{"day":"Mar","session":"string","color":"#hex","done":false},{"day":"Mer","session":"string","color":"#hex","done":false},{"day":"Jeu","session":"string","color":"#hex","done":false},{"day":"Ven","session":"string","color":"#hex","done":false},{"day":"Sam","session":"string","color":"#hex","done":false},{"day":"Dim","session":"string","color":"#hex","done":false}]}`;
 
   const systemPrompt = isBilan
     ? `Tu es un coach marathon expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : Yann · 73kg · Nice · ${objectiveStr} · Marathon de Nice 14 sept 2026 · ${daysLeft} jours restants.${commentPrompt} Sois honnête et précis. Schéma JSON : ${schema} — "confidence" est un entier 0-100. "verdict" est exactement l'une des trois valeurs : "continuer", "ameliorer" ou "downgrade". "acquis", "atravailler" et "priorites" sont des tableaux de 3 strings courtes.`
-    : `Tu es un coach marathon expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : Yann · 73kg · Nice · ${objectiveStr} · Marathon de Nice 14 sept 2026 · ${daysLeft} jours restants.${prefsPrompt || ""}${runsWeekPrompt}${commentPrompt} Schéma JSON : ${schema} — Le champ "confidence" est un entier entre 0 et 100. Le champ "nextDay" est le jour de la semaine en français.`;
+    : `Tu es un coach marathon expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : Yann · 73kg · Nice · ${objectiveStr} · Marathon de Nice 14 sept 2026 · ${daysLeft} jours restants.${prefsPrompt || ""}${runsWeekPrompt}${commentPrompt} Schéma JSON : ${schema} — "confidence" est un entier 0-100. "nextDay" est le jour en français. "week" contient TOUJOURS exactement 7 objets (Lun→Dim). "done":true uniquement sur les runs déjà effectués cette semaine.`;
 
   const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
