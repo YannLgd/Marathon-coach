@@ -685,13 +685,13 @@ function renderHome() {
     var todayIdx = todayJs === 0 ? 6 : todayJs - 1; // 0=lun...6=dim
     var DAY_ORDER = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 
-    // Completer a 7 jours
+    // Completer a 7 jours toujours
     var fullWeek = DAY_ORDER.map(function(dayLabel) {
       var found = week.find(function(w) { return w.day === dayLabel; });
       return found || { day: dayLabel, session: 'Repos', color: '#374151', done: false };
     });
 
-    // Volume cible = somme km des runs
+    // Volume cible = somme km des runs (done ou a venir)
     var targetKm = fullWeek.reduce(function(sum, w) {
       if (!normalizeRun(w.session)) return sum;
       var km = parseFloat((w.distance || extractKm(w.session) || '0').replace(',', '.'));
@@ -700,52 +700,56 @@ function renderHome() {
 
     var doneKm = parseFloat(localStorage.getItem('mc_week_done_km') || '0') || 0;
 
+    // Largeur dynamique : 7 cartes dans la largeur dispo (~360px max)
+    // padding bloc = 32px, gap = 4px*6 = 24px => dispo = ~304px => chaque carte ~43px
     var cards = fullWeek.map(function(w, idx) {
       var run = normalizeRun(w.session);
       var km = w.distance || extractKm(w.session) || '';
       var isPast = idx < todayIdx;
       var isToday = idx === todayIdx;
-      var isDone = w.done === true;
+      // done = marque par Claude OU jour passe avec un run dans le plan
+      var isDone = w.done === true || (isPast && !!run);
+
+      var dayLbl = h('div', {style:{fontSize:'7px',color: isToday ? '#a78bfa' : (isDone ? '#3b4560' : '#3b4560'),marginBottom:'3px',textTransform:'uppercase',fontWeight: isToday ? '800' : '600',letterSpacing:'0.5px'}}, w.day);
 
       if (!run) {
-        if (isPast) return null;
-        return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'52px'}},
-          h('div', {style:{fontSize:'8px',color:'#2d3748',marginBottom:'4px',textTransform:'uppercase',fontWeight:'600'}}, w.day),
-          h('div', {style:{borderRadius:'10px',padding:'8px 4px',background:'#0a0d14',border:'1px solid #1a2035',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'66px'}},
-            h('div', {style:{fontSize:'9px',color:'#2d3748'}}, '—')));
+        // Repos — afficher toujours, discret
+        return h('div', {style:{flex:'1',minWidth:'0',textAlign:'center'}},
+          dayLbl,
+          h('div', {style:{borderRadius:'8px',padding:'6px 2px',background:'#0a0d14',border:'1px solid #111827',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'58px'}},
+            h('div', {style:{fontSize:'8px',color:'#1e2535'}}, '—')));
       }
 
-      if (isDone || (isPast && run)) {
-        return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'60px',opacity:'0.5'}},
-          h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'4px',textTransform:'uppercase',fontWeight:'600'}}, w.day),
-          h('div', {style:{borderRadius:'10px',padding:'8px 6px',background:run.color+'10',border:'1px solid '+run.color+'20',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'3px',minHeight:'66px'}},
-            h('div', {style:{fontSize:'14px',lineHeight:'1',marginBottom:'2px'}}, '✓'),
-            h('div', {style:{fontSize:'8px',color:run.color,fontWeight:'800',lineHeight:'1.2',textAlign:'center'}}, run.label),
-            km ? h('div', {style:{fontSize:'11px',color:'#6b7280',fontWeight:'700',lineHeight:'1'}}, km) : null));
+      if (isDone) {
+        return h('div', {style:{flex:'1',minWidth:'0',textAlign:'center',opacity:'0.5'}},
+          dayLbl,
+          h('div', {style:{borderRadius:'8px',padding:'6px 2px',background:run.color+'0d',border:'1px solid '+run.color+'20',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'2px',minHeight:'58px'}},
+            h('div', {style:{fontSize:'12px',lineHeight:'1',color:run.color}}, '✓'),
+            h('div', {style:{fontSize:'7px',color:run.color,fontWeight:'800',lineHeight:'1.2',textAlign:'center'}}, run.label),
+            km ? h('div', {style:{fontSize:'10px',color:'#6b7280',fontWeight:'700',lineHeight:'1'}}, km) : null));
       }
 
-      return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'60px'}},
-        h('div', {style:{fontSize:'8px',color: isToday ? '#a78bfa' : '#3b4560',marginBottom:'4px',textTransform:'uppercase',fontWeight: isToday ? '800' : '600'}}, w.day),
-        h('div', {style:{borderRadius:'10px',padding:'8px 6px',background:run.color+'15',border:'1px solid '+(isToday ? run.color+'80' : run.color+'30'),display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'3px',minHeight:'66px'}},
-          h('div', {style:{fontSize:'8px',color:run.color,fontWeight:'800',lineHeight:'1.2',textAlign:'center'}}, run.label),
-          km ? h('div', {style:{fontSize:'12px',color:'#e2e8f0',fontWeight:'900',lineHeight:'1',marginTop:'2px'}}, km) : null));
-    }).filter(Boolean);
+      // A venir ou aujourd'hui
+      return h('div', {style:{flex:'1',minWidth:'0',textAlign:'center'}},
+        dayLbl,
+        h('div', {style:{borderRadius:'8px',padding:'6px 2px',background:run.color+'15',border:'1px solid '+(isToday ? run.color+'70' : run.color+'30'),display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'2px',minHeight:'58px'}},
+          h('div', {style:{fontSize:'7px',color:run.color,fontWeight:'800',lineHeight:'1.2',textAlign:'center'}}, run.label),
+          km ? h('div', {style:{fontSize:'11px',color:'#e2e8f0',fontWeight:'900',lineHeight:'1',marginTop:'1px'}}, km) : null));
+    });
 
-    if (cards.length) {
-      children.push(
-        h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px'}},
-          h('div', {style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'12px'}},
-            h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2px',fontWeight:'700'}}, 'Ma semaine'),
-            targetKm > 0 ? h('div', {style:{display:'flex',alignItems:'center',gap:'10px'}},
-              renderDonut(doneKm, targetKm, '#a78bfa'),
-              h('div', {style:{textAlign:'right'}},
-                h('div', {style:{fontSize:'10px',color:'#a78bfa',fontWeight:'800'}}, Math.round(doneKm) + ' / ' + Math.round(targetKm) + ' km'),
-                h('div', {style:{fontSize:'9px',color:'#3b4560',marginTop:'2px'}}, 'effectue'))) : null),
-          h.apply(null, ['div', {style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'2px'}}].concat(cards))));
-    }
+    children.push(
+      h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px'}},
+        h('div', {style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'10px'}},
+          h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2px',fontWeight:'700'}}, 'Ma semaine'),
+          targetKm > 0 ? h('div', {style:{display:'flex',alignItems:'center',gap:'8px'}},
+            renderDonut(doneKm, targetKm, '#a78bfa'),
+            h('div', {style:{textAlign:'right'}},
+              h('div', {style:{fontSize:'10px',color:'#a78bfa',fontWeight:'800'}}, Math.round(doneKm) + ' / ' + Math.round(targetKm) + ' km'),
+              h('div', {style:{fontSize:'9px',color:'#3b4560',marginTop:'2px'}}, 'effectue'))) : null),
+        h.apply(null, ['div', {style:{display:'flex',gap:'4px'}}].concat(cards))));
   }
 
-  // Bouton graph volume
+    // Bouton graph volume
   children.push(
     h('button', {
       onclick: function() { setState({ view: 'volume' }); },
