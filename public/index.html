@@ -17,7 +17,6 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .fade { animation: fadeUp 0.35s ease both; }
 
-    /* Dialog overlay */
     .dialog-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.75);
       display: flex; align-items: flex-end; justify-content: center;
@@ -37,11 +36,16 @@
       resize: none; outline: none; line-height: 1.5; min-height: 100px;
     }
     .dialog-textarea:focus { border-color: #7c3aed; }
+    .dialog-input {
+      width: 100%; background: #0e1118; border: 1px solid #2d3748; border-radius: 12px;
+      color: #e2e8f0; font-size: 15px; font-family: inherit; padding: 14px;
+      outline: none; line-height: 1.5;
+    }
+    .dialog-input:focus { border-color: #7c3aed; }
     .dialog-actions { display: flex; gap: 10px; margin-top: 12px; }
     .dialog-btn-cancel { flex: 1; padding: 14px; background: transparent; border: 1px solid #2d3748; border-radius: 12px; color: #6b7280; font-size: 14px; font-weight: 600; }
     .dialog-btn-ok { flex: 2; padding: 14px; background: #7c3aed; border-radius: 12px; color: #fff; font-size: 14px; font-weight: 700; }
 
-    /* Confirm dialog */
     .confirm-box {
       background: #1e293b; border-radius: 20px 20px 0 0;
       padding: 28px 20px 32px; width: 100%; max-width: 430px;
@@ -59,8 +63,19 @@
 <div id="app"></div>
 <div id="overlay-root"></div>
 <script>
-const RACE_DATE = new Date("2026-09-14T08:00:00");
-const getDays = () => Math.max(0, Math.ceil((RACE_DATE - new Date()) / 86400000));
+// ─── Objectif ────────────────────────────────────────────────────────────────
+const DEFAULT_OBJECTIVE = { distance: "42,2 km", time: "4h00", pace: "5'41\"/km", raceDate: "2026-09-14T08:00:00", raceName: "Marathon de Nice" };
+
+function loadObjective() {
+  try { return JSON.parse(localStorage.getItem("mc_objective") || "null") || DEFAULT_OBJECTIVE; }
+  catch { return DEFAULT_OBJECTIVE; }
+}
+function saveObjective(obj) {
+  localStorage.setItem("mc_objective", JSON.stringify(obj));
+}
+
+function getRaceDate() { return new Date(loadObjective().raceDate || DEFAULT_OBJECTIVE.raceDate); }
+const getDays = () => Math.max(0, Math.ceil((getRaceDate() - new Date()) / 86400000));
 const getPhase = d => {
   if (d > 63) return { label:"Fondamentaux", color:"#60a5fa", bg:"#0d1f3c" };
   if (d > 35) return { label:"Construction",  color:"#a78bfa", bg:"#1a0f35" };
@@ -72,7 +87,7 @@ const DAYS_FR = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
 const FULL_DAYS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
 const MONTHS_FR = ["jan","fev","mar","avr","mai","juin","juil","aout","sep","oct","nov","dec"];
 
-// Cache helpers
+// ─── Cache helpers ────────────────────────────────────────────────────────────
 function saveCache(result) {
   localStorage.setItem("mc_last_result", JSON.stringify({ result, savedAt: Date.now() }));
 }
@@ -98,8 +113,20 @@ function saveBilan(result) {
 function loadBilan() {
   try { return JSON.parse(localStorage.getItem("mc_last_bilan") || "null"); } catch { return null; }
 }
+function saveVolumeHistory(data) {
+  localStorage.setItem("mc_volume_history", JSON.stringify({ data, savedAt: Date.now() }));
+}
+function loadVolumeHistory() {
+  try {
+    const raw = JSON.parse(localStorage.getItem("mc_volume_history") || "null");
+    if (!raw) return null;
+    const age = Date.now() - raw.savedAt;
+    if (age > 24 * 3600 * 1000) return null; // TTL 24h
+    return raw.data;
+  } catch { return null; }
+}
 
-// Prefs helpers
+// ─── Prefs ───────────────────────────────────────────────────────────────────
 function loadPrefs() {
   try { return JSON.parse(localStorage.getItem("mc_prefs") || "null") || { sessions: 4, days: [0, 2, 4, 5] }; }
   catch { return { sessions: 4, days: [0, 2, 4, 5] }; }
@@ -113,14 +140,13 @@ function getPrefsPrompt(p) {
   return "\nPREFERENCES IMPORTANTES - respecter strictement : EXACTEMENT " + p.sessions + " seances de course par semaine (pas plus, pas moins). Jours disponibles pour courir : " + (selected || "non precises") + ". Les autres jours doivent etre Repos ou cross-training. Le champ week[] doit contenir exactement " + p.sessions + " entrees avec une vraie seance de course.";
 }
 
-// Extrait le kilometrage depuis une string type "EF 12km" ou "Tempo 10 km"
 function extractKm(session) {
   if (!session) return '';
   const m = session.match(/(\d+(?:[.,]\d+)?)\s*km/i);
   return m ? m[1] + 'km' : '';
 }
 
-// Overlay helpers
+// ─── Overlay helpers ──────────────────────────────────────────────────────────
 function showOverlay(el) {
   const root = document.getElementById('overlay-root');
   root.innerHTML = '';
@@ -131,7 +157,7 @@ function clearOverlay() {
   root.innerHTML = '';
 }
 
-// Dialog commentaire
+// ─── Dialog commentaire ───────────────────────────────────────────────────────
 function showCommentDialog(onConfirm) {
   const overlay = document.createElement('div');
   overlay.className = 'dialog-overlay';
@@ -150,9 +176,7 @@ function showCommentDialog(onConfirm) {
   const textarea = document.createElement('textarea');
   textarea.className = 'dialog-textarea';
   textarea.placeholder = 'Ex : J\'ai mal au mollet gauche depuis hier, grosse semaine de travail...';
-  // Pré-remplir avec commentaire sauvé si présent
-  const savedComment = localStorage.getItem('mc_pending_comment') || '';
-  textarea.value = savedComment;
+  textarea.value = localStorage.getItem('mc_pending_comment') || '';
 
   const actions = document.createElement('div');
   actions.className = 'dialog-actions';
@@ -183,7 +207,89 @@ function showCommentDialog(onConfirm) {
   setTimeout(function() { textarea.focus(); }, 100);
 }
 
-// Dialog confirmation déconnexion
+// ─── Dialog objectif ─────────────────────────────────────────────────────────
+function showObjectiveDialog() {
+  const obj = loadObjective();
+  const overlay = document.createElement('div');
+  overlay.className = 'dialog-overlay';
+  overlay.onclick = function(e) { if (e.target === overlay) clearOverlay(); };
+
+  const box = document.createElement('div');
+  box.className = 'dialog-box';
+
+  const title = document.createElement('div');
+  title.className = 'dialog-title';
+  title.textContent = '🎯 Modifier l\'objectif';
+
+  const sub = document.createElement('div');
+  sub.className = 'dialog-sub';
+  sub.textContent = 'Les analyses futures tiendront compte du nouvel objectif. Le cache bilan et semaine sera effacé.';
+
+  function field(label, value, placeholder) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'margin-bottom:12px;';
+    const lbl = document.createElement('div');
+    lbl.style.cssText = 'font-size:10px;color:#4b5563;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:6px;';
+    lbl.textContent = label;
+    const inp = document.createElement('input');
+    inp.className = 'dialog-input';
+    inp.value = value;
+    inp.placeholder = placeholder;
+    wrap.appendChild(lbl);
+    wrap.appendChild(inp);
+    return { wrap, inp };
+  }
+
+  const fRace  = field('Course', obj.raceName || DEFAULT_OBJECTIVE.raceName, 'Ex: Marathon de Nice');
+  const fDate  = field('Date (YYYY-MM-DD)', (obj.raceDate || DEFAULT_OBJECTIVE.raceDate).slice(0, 10), '2026-09-14');
+  const fDist  = field('Distance', obj.distance || DEFAULT_OBJECTIVE.distance, 'Ex: 42,2 km');
+  const fTime  = field('Temps cible', obj.time || DEFAULT_OBJECTIVE.time, 'Ex: 4h00');
+  const fPace  = field('Allure cible', obj.pace || DEFAULT_OBJECTIVE.pace, 'Ex: 5\'41"/km');
+
+  const actions = document.createElement('div');
+  actions.className = 'dialog-actions';
+
+  const btnCancel = document.createElement('button');
+  btnCancel.className = 'dialog-btn-cancel';
+  btnCancel.textContent = 'Annuler';
+  btnCancel.onclick = function() { clearOverlay(); };
+
+  const btnOk = document.createElement('button');
+  btnOk.className = 'dialog-btn-ok';
+  btnOk.textContent = '✓ Sauvegarder';
+  btnOk.onclick = function() {
+    const dateVal = fDate.inp.value.trim();
+    const newObj = {
+      raceName: fRace.inp.value.trim() || DEFAULT_OBJECTIVE.raceName,
+      raceDate: dateVal ? dateVal + 'T08:00:00' : DEFAULT_OBJECTIVE.raceDate,
+      distance: fDist.inp.value.trim() || DEFAULT_OBJECTIVE.distance,
+      time: fTime.inp.value.trim() || DEFAULT_OBJECTIVE.time,
+      pace: fPace.inp.value.trim() || DEFAULT_OBJECTIVE.pace,
+    };
+    saveObjective(newObj);
+    // Invalider caches dépendants de l'objectif
+    localStorage.removeItem('mc_last_bilan');
+    localStorage.removeItem('mc_weekly_plan');
+    clearOverlay();
+    render();
+  };
+
+  actions.appendChild(btnCancel);
+  actions.appendChild(btnOk);
+
+  box.appendChild(title);
+  box.appendChild(sub);
+  box.appendChild(fRace.wrap);
+  box.appendChild(fDate.wrap);
+  box.appendChild(fDist.wrap);
+  box.appendChild(fTime.wrap);
+  box.appendChild(fPace.wrap);
+  box.appendChild(actions);
+  overlay.appendChild(box);
+  showOverlay(overlay);
+}
+
+// ─── Dialog déconnexion ───────────────────────────────────────────────────────
 function showDisconnectConfirm() {
   const overlay = document.createElement('div');
   overlay.className = 'dialog-overlay';
@@ -220,6 +326,8 @@ function showDisconnectConfirm() {
     localStorage.removeItem('mc_weekly_plan');
     localStorage.removeItem('mc_confidence');
     localStorage.removeItem('mc_pending_comment');
+    localStorage.removeItem('mc_last_bilan');
+    localStorage.removeItem('mc_volume_history');
     setState({ auth: null, result: null, view: 'login' });
   };
 
@@ -233,7 +341,7 @@ function showDisconnectConfirm() {
   showOverlay(overlay);
 }
 
-// State
+// ─── State ────────────────────────────────────────────────────────────────────
 const cached = loadCache();
 let state = {
   view: "home",
@@ -246,7 +354,7 @@ let state = {
 
 function setState(patch) { state = { ...state, ...patch }; render(); }
 
-// Auth helpers
+// ─── Auth helpers ─────────────────────────────────────────────────────────────
 function saveAuth(auth) { localStorage.setItem("mc_auth", JSON.stringify(auth)); state.auth = auth; }
 
 async function getValidToken() {
@@ -272,7 +380,7 @@ function handleOAuthParams() {
   }
 }
 
-// API call — avec commentaire
+// ─── Analyze ──────────────────────────────────────────────────────────────────
 function analyzeWithComment(mode, extra) {
   showCommentDialog(function(comment) {
     analyze(mode, extra, comment);
@@ -288,7 +396,8 @@ async function analyze(mode, extra, comment) {
     if (!token) { setState({ loading:false, view:"login" }); return; }
     const prefs = loadPrefs();
     const prefsPrompt = getPrefsPrompt(prefs);
-    const res = await fetch("/api/analyze", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ access_token:token, mode, extra, prefsPrompt, comment }) });
+    const objective = loadObjective();
+    const res = await fetch("/api/analyze", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ access_token:token, mode, extra, prefsPrompt, comment, objective }) });
     const data = await res.json();
     if (!res.ok || !data.result) throw new Error(data.error || "Erreur serveur");
     if (data.result._mode === 'bilan') {
@@ -297,13 +406,92 @@ async function analyze(mode, extra, comment) {
     } else {
       if (data.result.week) saveWeeklyPlan(data.result.week);
       if (data.result.confidence !== undefined) saveConfidence(data.result.confidence);
+      if (data.weekDoneKm !== undefined) localStorage.setItem('mc_week_done_km', String(data.weekDoneKm));
       saveCache(data.result);
       setState({ loading:false, result:data.result, savedAt:Date.now(), view:"result" });
     }
   } catch(e) { setState({ loading:false, error:e.message, view:"error" }); }
 }
 
-// UI helpers
+// ─── Volume history ───────────────────────────────────────────────────────────
+async function fetchVolumeHistory() {
+  const cached2 = loadVolumeHistory();
+  if (cached2) return cached2;
+  const token = await getValidToken();
+  if (!token) return null;
+  const res = await fetch("/api/analyze", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ access_token:token, mode:"volume_history" }) });
+  const data = await res.json();
+  if (data.weekMap) { saveVolumeHistory(data.weekMap); return data.weekMap; }
+  return null;
+}
+
+// Calcul projection marathon (périodisation standard)
+function computeProjection(weekMap) {
+  // Semaine en cours (lundi)
+  const now = new Date();
+  const day = now.getDay();
+  const diff = (day === 0 ? -6 : 1 - day);
+  const thisMonday = new Date(now);
+  thisMonday.setDate(now.getDate() + diff);
+  thisMonday.setHours(0, 0, 0, 0);
+
+  // 12 semaines passées
+  const pastWeeks = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(thisMonday);
+    d.setDate(thisMonday.getDate() - i * 7);
+    const key = d.toISOString().slice(0, 10);
+    pastWeeks.push({ key, date: new Date(d), km: weekMap[key] || 0 });
+  }
+
+  // Volume de base : moyenne des 4 dernières semaines avec données
+  const recentWithData = pastWeeks.filter(w => w.km > 0).slice(-4);
+  const baseVolume = recentWithData.length
+    ? recentWithData.reduce((s, w) => s + w.km, 0) / recentWithData.length
+    : 30;
+
+  // Semaines futures jusqu'au 14 sept
+  const raceDate = getRaceDate();
+  const futureWeeks = [];
+  let w = new Date(thisMonday);
+  w.setDate(w.getDate() + 7); // commence semaine prochaine
+  let weekIdx = 1;
+  while (w < raceDate) {
+    const weeksToRace = Math.round((raceDate - w) / (7 * 86400000));
+    let volume;
+    if (weeksToRace <= 2) {
+      volume = baseVolume * 0.4; // taper final
+    } else if (weeksToRace === 3) {
+      volume = baseVolume * 0.6; // début taper
+    } else {
+      // Progression +10%/sem, récup toutes les 4 sem (-20%)
+      const cycle = weekIdx % 4;
+      if (cycle === 0) {
+        volume = baseVolume * 0.8;
+      } else {
+        volume = baseVolume * Math.min(1 + weekIdx * 0.08, 1.5);
+      }
+    }
+    futureWeeks.push({ key: w.toISOString().slice(0, 10), date: new Date(w), km: Math.round(volume * 10) / 10, projected: true });
+    w = new Date(w);
+    w.setDate(w.getDate() + 7);
+    weekIdx++;
+  }
+
+  // Projection pour les semaines passées aussi (plan théorique)
+  const projectedPast = pastWeeks.map(function(pw, i) {
+    const weeksFromStart = i;
+    const cycle = weeksFromStart % 4;
+    let vol;
+    if (cycle === 0 && weeksFromStart > 0) vol = baseVolume * 0.8;
+    else vol = baseVolume * Math.min(1 + weeksFromStart * 0.05, 1.4);
+    return { ...pw, projectedKm: Math.round(vol * 10) / 10 };
+  });
+
+  return { pastWeeks: projectedPast, futureWeeks, baseVolume };
+}
+
+// ─── UI helpers ───────────────────────────────────────────────────────────────
 const css = s => Object.entries(s).map(([k,v])=>k.replace(/([A-Z])/g,'-$1').toLowerCase()+':'+v).join(';');
 function h(tag, attrs) {
   const children = Array.prototype.slice.call(arguments, 2);
@@ -318,16 +506,16 @@ function h(tag, attrs) {
   return el;
 }
 
-// Confidence color
 function confidenceColor(v) {
   if (v >= 75) return '#34d399';
   if (v >= 50) return '#fbbf24';
   return '#f87171';
 }
 
-// Header
+// ─── Header ───────────────────────────────────────────────────────────────────
 function renderHeader() {
   const days = getDays(), phase = getPhase(days);
+  const obj = loadObjective();
   const resultData = state.result || (loadCache() ? loadCache().result : null);
   const next = resultData ? { session: resultData.headline, label: resultData.type, nextDay: resultData.nextDay } : null;
   const confidence = loadConfidence();
@@ -339,36 +527,41 @@ function renderHeader() {
     }, '⚙️'),
     h('div', {style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'14px'}},
       h('div', null,
-        h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2.5px',fontWeight:'700',marginBottom:'4px'}}, 'Marathon de Nice'),
+        h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2.5px',fontWeight:'700',marginBottom:'4px'}}, obj.raceName || 'Marathon de Nice'),
         h('div', {style:{display:'flex',alignItems:'baseline',gap:'8px'}},
           h('span', {style:{fontSize:'40px',fontWeight:'900',color:'#fff',letterSpacing:'-2px',lineHeight:'1'}}, String(days)),
           h('span', {style:{fontSize:'13px',color:'#4b5563',fontWeight:'600'}}, 'jours'))),
       h('div', {style:{display:'flex',alignItems:'center',gap:'7px',background:phase.bg,borderRadius:'20px',padding:'6px 14px',border:'1px solid '+phase.color+'30',marginRight:'32px'}},
         h('div', {style:{width:'6px',height:'6px',borderRadius:'50%',background:phase.color,boxShadow:'0 0 6px '+phase.color}}),
         h('span', {style:{fontSize:'11px',color:phase.color,fontWeight:'700'}}, phase.label))),
-    h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'7px',marginBottom:(confidence !== null || next) ? '10px' : '0'}},
-      h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:'2px solid #a78bfa25',textAlign:'center'}},
-        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, 'Distance'),
-        h('div', {style:{fontSize:'12px',fontWeight:'800',color:'#a78bfa',lineHeight:'1'}}, '42,2 km')),
-      h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:'2px solid #60a5fa25',textAlign:'center'}},
-        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, 'Objectif'),
-        h('div', {style:{fontSize:'12px',fontWeight:'800',color:'#60a5fa',lineHeight:'1'}}, "4h00'00")),
-      h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:'2px solid #34d39925',textAlign:'center'}},
-        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, 'Allure'),
-        h('div', {style:{fontSize:'12px',fontWeight:'800',color:'#34d399',lineHeight:'1'}}, "5'41\"/km"))),
-    // Indice de confiance sous l'objectif
+
+    // Objectif modifiable — 3 stats + bouton édition
+    h('div', {style:{position:'relative',marginBottom:(confidence !== null || next) ? '10px' : '0'}},
+      h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'7px'}},
+        h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:'2px solid #a78bfa25',textAlign:'center'}},
+          h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, 'Distance'),
+          h('div', {style:{fontSize:'12px',fontWeight:'800',color:'#a78bfa',lineHeight:'1'}}, obj.distance || '42,2 km')),
+        h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:'2px solid #60a5fa25',textAlign:'center'}},
+          h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, 'Objectif'),
+          h('div', {style:{fontSize:'12px',fontWeight:'800',color:'#60a5fa',lineHeight:'1'}}, obj.time || "4h00")),
+        h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:'2px solid #34d39925',textAlign:'center'}},
+          h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, 'Allure'),
+          h('div', {style:{fontSize:'12px',fontWeight:'800',color:'#34d399',lineHeight:'1'}}, obj.pace || "5'41\"/km"))),
+      h('button', {
+        onclick: function(e) { e.stopPropagation(); showObjectiveDialog(); },
+        style:{position:'absolute',top:'-6px',right:'-2px',background:'none',border:'none',color:'#3b4560',fontSize:'12px',cursor:'pointer',padding:'4px',lineHeight:'1'}
+      }, '✎')),
+
     confidence !== null ? h('div', {style:{display:'flex',alignItems:'center',gap:'10px',background:'#0e1118',borderRadius:'10px',padding:'9px 14px',marginBottom: next ? '10px' : '0',border:'1px solid #1a2035'}},
       h('div', {style:{flex:'1'}},
         h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, 'Indice de confiance'),
         h('div', {style:{height:'4px',background:'#1a2035',borderRadius:'2px',overflow:'hidden'}},
           h('div', {style:{height:'100%',width:confidence+'%',background:confidenceColor(confidence),borderRadius:'2px',transition:'width 0.6s ease'}}))),
       h('div', {style:{fontSize:'18px',fontWeight:'900',color:confidenceColor(confidence),lineHeight:'1',minWidth:'36px',textAlign:'right'}}, confidence + '/100')) : null,
+
     next ? h('div', {
       onclick: function() {
-        if (!state.result) {
-          const c = loadCache();
-          if (c) state.result = c.result;
-        }
+        if (!state.result) { const c = loadCache(); if (c) state.result = c.result; }
         setState({ view:'result' });
       },
       style:{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#0e1118',borderRadius:'10px',padding:'10px 14px',border:'1px solid #1a2035',cursor:'pointer',marginBottom:'6px'}},
@@ -376,6 +569,7 @@ function renderHeader() {
         h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, next.nextDay ? 'Prochaine seance · ' + next.nextDay : 'Prochaine seance'),
         h('div', {style:{fontSize:'13px',fontWeight:'700',color:'#a78bfa'}}, next.label + ' · ' + next.session)),
       h('span', {style:{color:'#2d3748',fontSize:'16px'}}, '>')) : null,
+
     (function() {
       const b = loadBilan();
       if (!b) return null;
@@ -385,9 +579,7 @@ function renderHeader() {
       const bilanAge = Math.round((Date.now() - b.savedAt) / 3600000);
       const ageLabel = bilanAge < 1 ? "< 1h" : bilanAge + 'h';
       return h('div', {
-        onclick: function() {
-          setState({ view:'bilan' });
-        },
+        onclick: function() { setState({ view:'bilan' }); },
         style:{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#0a0d14',borderRadius:'10px',padding:'9px 14px',border:'1px solid #151c2a',cursor:'pointer'}},
         h('div', null,
           h('div', {style:{fontSize:'8px',color:'#2d3748',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, 'Bilan · il y a ' + ageLabel),
@@ -397,7 +589,55 @@ function renderHeader() {
   );
 }
 
-// Views
+// ─── Donut SVG ────────────────────────────────────────────────────────────────
+function renderDonut(done, total, color) {
+  const r = 28, cx = 36, cy = 36, stroke = 6;
+  const circ = 2 * Math.PI * r;
+  const pct = total > 0 ? Math.min(done / total, 1) : 0;
+  const dash = pct * circ;
+  const ns = 'http://www.w3.org/2000/svg';
+
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('width', '72');
+  svg.setAttribute('height', '72');
+  svg.setAttribute('viewBox', '0 0 72 72');
+
+  // Fond
+  const bg = document.createElementNS(ns, 'circle');
+  bg.setAttribute('cx', cx); bg.setAttribute('cy', cy); bg.setAttribute('r', r);
+  bg.setAttribute('fill', 'none');
+  bg.setAttribute('stroke', '#1a2035');
+  bg.setAttribute('stroke-width', stroke);
+  svg.appendChild(bg);
+
+  // Arc progression
+  const arc = document.createElementNS(ns, 'circle');
+  arc.setAttribute('cx', cx); arc.setAttribute('cy', cy); arc.setAttribute('r', r);
+  arc.setAttribute('fill', 'none');
+  arc.setAttribute('stroke', color);
+  arc.setAttribute('stroke-width', stroke);
+  arc.setAttribute('stroke-linecap', 'round');
+  arc.setAttribute('stroke-dasharray', dash + ' ' + circ);
+  arc.setAttribute('stroke-dashoffset', '0');
+  arc.setAttribute('transform', 'rotate(-90 36 36)');
+  svg.appendChild(arc);
+
+  // Texte centre
+  const txt = document.createElementNS(ns, 'text');
+  txt.setAttribute('x', cx); txt.setAttribute('y', cy + 1);
+  txt.setAttribute('text-anchor', 'middle');
+  txt.setAttribute('dominant-baseline', 'middle');
+  txt.setAttribute('fill', '#e2e8f0');
+  txt.setAttribute('font-size', '9');
+  txt.setAttribute('font-weight', '800');
+  txt.setAttribute('font-family', '-apple-system, system-ui, sans-serif');
+  txt.textContent = Math.round(done) + '/' + Math.round(total);
+  svg.appendChild(txt);
+
+  return svg;
+}
+
+// ─── Home ─────────────────────────────────────────────────────────────────────
 function renderHome() {
   const name = (state.auth && state.auth.athlete_name) ? state.auth.athlete_name : 'Yann';
   const cache = loadCache();
@@ -414,8 +654,8 @@ function renderHome() {
     if (!s) return null;
     const sl = s.toLowerCase();
     if (sl.indexOf('fractionn') >= 0 || sl.indexOf('interval') >= 0 || sl.indexOf('vma') >= 0 || sl.indexOf('repet') >= 0) return { label:'Fractionne', color:'#f87171' };
-    if (sl.indexOf('tempo') >= 0 || sl.indexOf('seuil') >= 0 || sl.indexOf('allure marathon') >= 0) return { label:'Tempo', color:'#fbbf24' };
-    if (sl.indexOf('sortie longue') >= 0 || sl.indexOf('long run') >= 0) return { label:'Sortie longue', color:'#a78bfa' };
+    if (sl.indexOf('tempo') >= 0 || sl.indexOf('seuil') >= 0 || sl.indexOf('allure marathon') >= 0 || sl.indexOf('allure spe') >= 0) return { label:'Tempo', color:'#fbbf24' };
+    if (sl.indexOf('sortie longue') >= 0 || sl.indexOf('long run') >= 0 || sl.indexOf(' sl') >= 0) return { label:'Sortie longue', color:'#a78bfa' };
     if (sl.indexOf('footing') >= 0 || sl.indexOf('ef ') >= 0 || sl.indexOf('endurance fond') >= 0 || sl.indexOf('recup') >= 0 || sl.indexOf('regen') >= 0) return { label:'Footing', color:'#60a5fa' };
     return null;
   };
@@ -439,25 +679,66 @@ function renderHome() {
       h('span', {style:{color:'#2d3748',fontSize:'18px'}}, '>')));
   });
 
-  // Bloc Ma semaine
+  // ── Bloc Ma semaine avec donut ─────────────────────────────────────────────
   if (week) {
     const runs = week.filter(function(w) { return normalizeRun(w.session); });
     if (runs.length) {
+      // Volume cible = somme des km du plan
+      const targetKm = runs.reduce(function(sum, w) {
+        const km = parseFloat((w.distance || extractKm(w.session) || '0').replace(',', '.'));
+        return sum + (isNaN(km) ? 0 : km);
+      }, 0);
+
+      // Volume effectué cette semaine (depuis lundi)
+      const nowW = new Date();
+      const dayW = nowW.getDay();
+      const diffW = (dayW === 0 ? -6 : 1 - dayW);
+      const mondayW = new Date(nowW);
+      mondayW.setDate(nowW.getDate() + diffW);
+      mondayW.setHours(0, 0, 0, 0);
+
+      // On lit le cache des activités récentes pour estimer le done
+      // On stocke le volume effectué cette semaine dans mc_week_done via l'état
+      // Ici on utilise une heuristique : semaine = lundi → maintenant
+      // Le volume réel n'est pas disponible sans appel Strava supplémentaire
+      // → on stocke le volume effectué dans localStorage mc_week_done_km
+      // mis à jour lors du dernier appel analyze (on le calcule côté serveur ou on approxime)
+      // Pour l'instant : on lit mc_week_done_km s'il existe, sinon 0
+      const doneKm = parseFloat(localStorage.getItem('mc_week_done_km') || '0') || 0;
+
       const cards = runs.map(function(w) {
         const run = normalizeRun(w.session);
         const km = w.distance || extractKm(w.session) || '';
-        return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'64px'}},
+        return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'60px'}},
           h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'4px',textTransform:'uppercase',fontWeight:'600'}}, w.day),
           h('div', {style:{borderRadius:'10px',padding:'8px 6px',background:run.color+'15',border:'1px solid '+run.color+'30',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'3px',minHeight:'66px'}},
             h('div', {style:{fontSize:'8px',color:run.color,fontWeight:'800',lineHeight:'1.2',textAlign:'center'}}, run.label),
             km ? h('div', {style:{fontSize:'12px',color:'#e2e8f0',fontWeight:'900',lineHeight:'1',marginTop:'2px'}}, km) : null));
       });
+
       children.push(
         h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px'}},
-          h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontWeight:'700'}}, 'Ma semaine'),
+          h('div', {style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'12px'}},
+            h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2px',fontWeight:'700'}}, 'Ma semaine'),
+            targetKm > 0 ? h('div', {style:{display:'flex',alignItems:'center',gap:'10px'}},
+              renderDonut(doneKm, targetKm, '#a78bfa'),
+              h('div', {style:{textAlign:'right'}},
+                h('div', {style:{fontSize:'10px',color:'#a78bfa',fontWeight:'800'}}, Math.round(doneKm) + ' / ' + Math.round(targetKm) + ' km'),
+                h('div', {style:{fontSize:'9px',color:'#3b4560',marginTop:'2px'}}, 'effectué'))) : null),
           h.apply(null, ['div', {style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'2px'}}].concat(cards))));
     }
   }
+
+  // Bouton graph volume
+  children.push(
+    h('button', {
+      onclick: function() { setState({ view: 'volume' }); },
+      style:{width:'100%',display:'flex',alignItems:'center',gap:'14px',background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px',color:'#e2e8f0',textAlign:'left'}},
+      h('span', {style:{width:'42px',height:'42px',borderRadius:'12px',background:'#141824',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'20px',flexShrink:'0'}}, '📊'),
+      h('div', {style:{flex:'1'}},
+        h('div', {style:{fontSize:'14px',fontWeight:'600',marginBottom:'2px'}}, 'Volume hebdomadaire'),
+        h('div', {style:{fontSize:'11px',color:'#4b5563'}}, '12 semaines · projection jusqu\'au 14 sept')),
+      h('span', {style:{color:'#2d3748',fontSize:'18px'}}, '>')));
 
   children.push(h('button', {
     onclick: function() { showDisconnectConfirm(); },
@@ -467,7 +748,143 @@ function renderHome() {
   return h.apply(null, ['div', {class:'fade',style:{padding:'20px 18px'}}].concat(children));
 }
 
-// Preferences
+// ─── Volume graph view ────────────────────────────────────────────────────────
+function renderVolume() {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'fade';
+  wrapper.style.cssText = 'padding:20px 18px;';
+
+  const nav = h('div', {style:{display:'flex',alignItems:'center',gap:'12px',marginBottom:'20px'}},
+    h('button', {onclick:function(){setState({view:'home'});},style:{background:'none',border:'none',color:'#7c3aed',fontSize:'22px',cursor:'pointer',padding:'0',lineHeight:'1'}}, '←'),
+    h('div', {style:{fontSize:'16px',fontWeight:'800',color:'#e2e8f0'}}, '📊 Volume hebdomadaire'));
+  wrapper.appendChild(nav);
+
+  const chartContainer = document.createElement('div');
+  chartContainer.style.cssText = 'background:#0e1118;border:1px solid #1a2035;border-radius:14px;padding:16px;margin-bottom:12px;';
+
+  const loading = document.createElement('div');
+  loading.style.cssText = 'text-align:center;padding:40px 0;color:#4b5563;font-size:13px;';
+  loading.textContent = 'Chargement des données Strava…';
+  chartContainer.appendChild(loading);
+  wrapper.appendChild(chartContainer);
+
+  const legend = h('div', {style:{display:'flex',gap:'16px',padding:'0 4px',marginBottom:'12px'}},
+    h('div', {style:{display:'flex',alignItems:'center',gap:'6px'}},
+      h('div', {style:{width:'12px',height:'12px',borderRadius:'3px',background:'#a78bfa'}}),
+      h('div', {style:{fontSize:'11px',color:'#6b7280'}}, 'Volume réel')),
+    h('div', {style:{display:'flex',alignItems:'center',gap:'6px'}},
+      h('div', {style:{width:'12px',height:'12px',borderRadius:'3px',background:'#2d3748'}}),
+      h('div', {style:{fontSize:'11px',color:'#6b7280'}}, 'Volume prévu')));
+  wrapper.appendChild(legend);
+
+  const info = h('div', {style:{fontSize:'11px',color:'#2d3748',textAlign:'center',lineHeight:'1.5'}},
+    'Données mises en cache 24h · Projection basée sur périodisation marathon standard');
+  wrapper.appendChild(info);
+
+  // Charger les données en async
+  fetchVolumeHistory().then(function(weekMap) {
+    chartContainer.innerHTML = '';
+    if (!weekMap) {
+      chartContainer.style.cssText += 'text-align:center;padding:40px 0;';
+      chartContainer.textContent = 'Impossible de charger les données.';
+      return;
+    }
+
+    const proj = computeProjection(weekMap);
+    const allWeeks = proj.pastWeeks.concat(proj.futureWeeks);
+    if (!allWeeks.length) return;
+
+    const maxKm = Math.max(...allWeeks.map(w => Math.max(w.km || 0, w.projectedKm || w.km || 0)), 1);
+    const barHeight = 140;
+
+    // Labels mois
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;gap:3px;margin-bottom:4px;overflow:hidden;';
+
+    // Barres
+    const barsRow = document.createElement('div');
+    barsRow.style.cssText = 'display:flex;align-items:flex-end;gap:3px;height:' + barHeight + 'px;overflow:hidden;';
+
+    // Labels semaine (sous barres)
+    const labelsRow = document.createElement('div');
+    labelsRow.style.cssText = 'display:flex;gap:3px;margin-top:5px;overflow:hidden;';
+
+    allWeeks.forEach(function(w, i) {
+      const isFuture = !!w.projected;
+      const km = w.km || 0;
+      const projKm = w.projectedKm !== undefined ? w.projectedKm : km;
+
+      // Colonne
+      const col = document.createElement('div');
+      col.style.cssText = 'flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:' + barHeight + 'px;position:relative;min-width:0;';
+
+      // Barre prévu (gris derrière)
+      const projH = Math.round((projKm / maxKm) * barHeight);
+      const projBar = document.createElement('div');
+      projBar.style.cssText = 'position:absolute;bottom:0;left:0;right:0;height:' + projH + 'px;background:#1e2a40;border-radius:3px 3px 0 0;';
+      col.appendChild(projBar);
+
+      // Barre réelle (violet par-dessus) — uniquement passé
+      if (!isFuture && km > 0) {
+        const realH = Math.round((km / maxKm) * barHeight);
+        const realBar = document.createElement('div');
+        realBar.style.cssText = 'position:absolute;bottom:0;left:0;right:0;height:' + realH + 'px;background:#7c3aed;border-radius:3px 3px 0 0;';
+        col.appendChild(realBar);
+      }
+
+      // Semaine courante : bordure accent
+      const isCurrentWeek = (i === 11); // 12e semaine passée = semaine en cours
+      if (isCurrentWeek) {
+        col.style.outline = '1px solid #7c3aed44';
+        col.style.borderRadius = '3px';
+      }
+
+      barsRow.appendChild(col);
+
+      // Label date
+      const d = w.date;
+      const lbl = document.createElement('div');
+      lbl.style.cssText = 'flex:1;text-align:center;font-size:7px;color:#2d3748;min-width:0;overflow:hidden;';
+      // Afficher le mois uniquement au changement de mois
+      const prevDate = i > 0 ? allWeeks[i-1].date : null;
+      if (!prevDate || prevDate.getMonth() !== d.getMonth()) {
+        lbl.textContent = MONTHS_FR[d.getMonth()];
+        lbl.style.color = '#4b5563';
+      }
+      labelsRow.appendChild(lbl);
+    });
+
+    // KM max label
+    const yLabel = document.createElement('div');
+    yLabel.style.cssText = 'font-size:9px;color:#3b4560;text-align:right;margin-bottom:4px;';
+    yLabel.textContent = Math.round(maxKm) + ' km max';
+
+    chartContainer.appendChild(yLabel);
+    chartContainer.appendChild(barsRow);
+    chartContainer.appendChild(labelsRow);
+
+    // Stats résumé
+    const realWeeks = proj.pastWeeks.filter(w => w.km > 0);
+    const avgKm = realWeeks.length ? Math.round(realWeeks.reduce((s,w)=>s+w.km,0)/realWeeks.length) : 0;
+    const maxWeek = realWeeks.length ? Math.round(Math.max(...realWeeks.map(w=>w.km))) : 0;
+
+    const stats = h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'8px',marginTop:'14px'}},
+      h('div', {style:{background:'#141824',borderRadius:'10px',padding:'10px 8px',textAlign:'center'}},
+        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, 'Moy / sem'),
+        h('div', {style:{fontSize:'15px',fontWeight:'800',color:'#a78bfa'}}, avgKm + ' km')),
+      h('div', {style:{background:'#141824',borderRadius:'10px',padding:'10px 8px',textAlign:'center'}},
+        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, 'Meilleure sem'),
+        h('div', {style:{fontSize:'15px',fontWeight:'800',color:'#60a5fa'}}, maxWeek + ' km')),
+      h('div', {style:{background:'#141824',borderRadius:'10px',padding:'10px 8px',textAlign:'center'}},
+        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, 'Base proj.'),
+        h('div', {style:{fontSize:'15px',fontWeight:'800',color:'#34d399'}}, Math.round(proj.baseVolume) + ' km')));
+    chartContainer.appendChild(stats);
+  });
+
+  return wrapper;
+}
+
+// ─── Preferences ─────────────────────────────────────────────────────────────
 function renderPrefs() {
   const prefs = loadPrefs();
   var draft = { sessions: prefs.sessions, days: prefs.days.slice() };
@@ -575,6 +992,7 @@ function renderPrefs() {
   return wrapper;
 }
 
+// ─── Login / Loading / Error / Cross ─────────────────────────────────────────
 function renderLogin() {
   return h('div', {class:'fade',style:{padding:'40px 18px',textAlign:'center'}},
     h('div', {style:{fontSize:'40px',marginBottom:'16px'}}, '🏃'),
@@ -610,6 +1028,7 @@ function renderCross() {
     h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'transparent',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px'}}, '← Retour'));
 }
 
+// ─── Result ───────────────────────────────────────────────────────────────────
 function renderResult() {
   const cached2 = loadCache();
   const d = state.result || (cached2 ? cached2.result : null);
@@ -670,6 +1089,7 @@ function renderResult() {
   return h.apply(null, ['div', {class:'fade',style:{padding:'20px 18px'}}].concat(children));
 }
 
+// ─── Bilan ────────────────────────────────────────────────────────────────────
 function renderBilan() {
   const cached3 = loadBilan();
   const d = cached3 ? cached3.result : null;
@@ -701,49 +1121,40 @@ function renderBilan() {
 
   const children = [
     cacheAge !== null ? h('div', {style:{fontSize:'10px',color:'#2d3748',marginBottom:'10px',textAlign:'right'}}, 'En cache · il y a '+(cacheAge < 1 ? "moins d'1h" : cacheAge+'h')) : null,
-
-    // Niveau + tendance
     h('div', {style:{background:'linear-gradient(135deg,#1a0f35,#0d1a35)',borderRadius:'16px',padding:'18px',marginBottom:'10px',border:'1px solid #2a1f4a'}},
       h('div', {style:{fontSize:'9px',color:'#4b5563',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'10px',fontWeight:'700'}}, 'Situation actuelle'),
       h('div', {style:{display:'flex',gap:'8px',flexWrap:'wrap'}},
         tag(d.niveau || '–', '#a78bfa'),
         tag(d.tendance || '–', '#60a5fa'))),
-
-    // Acquis / À travailler
     section('✅ Points acquis', d.acquis, '#34d399'),
     section('⚠️ À travailler', d.atravailler, '#fbbf24'),
     section('🎯 Priorités des 4 prochaines semaines', d.priorites, '#a78bfa'),
-
-    // Verdict
     h('div', {style:{background:verdict.bg,borderRadius:'12px',padding:'16px',marginBottom:'10px',border:'1px solid '+verdict.color+'40'}},
       h('div', {style:{fontSize:'8px',color:verdict.color+'99',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'6px',fontWeight:'700'}}, 'Verdict objectif'),
       h('div', {style:{fontSize:'14px',fontWeight:'800',color:verdict.color,marginBottom:'8px'}}, verdict.icon + ' ' + verdict.label),
       h('div', {style:{fontSize:'12px',color:'#6b7280',lineHeight:'1.6'}}, d.verdictDetail)),
-
-    // Confiance
     conf !== null ? h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px',display:'flex',alignItems:'center',gap:'12px'}},
       h('div', {style:{flex:'1'}},
         h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'6px',fontWeight:'700'}}, 'Indice de confiance'),
         h('div', {style:{height:'4px',background:'#1a2035',borderRadius:'2px',overflow:'hidden'}},
           h('div', {style:{height:'100%',width:conf+'%',background:confidenceColor(conf),borderRadius:'2px'}}))),
       h('div', {style:{fontSize:'20px',fontWeight:'900',color:confidenceColor(conf),minWidth:'44px',textAlign:'right'}}, conf+'/100')) : null,
-
     h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px',fontWeight:'600'}}, '← Retour')
   ];
 
   return h.apply(null, ['div', {class:'fade',style:{padding:'20px 18px'}}].concat(children));
 }
 
-// Render
+// ─── Render ───────────────────────────────────────────────────────────────────
 function render() {
   const app = document.getElementById('app');
   app.innerHTML = '';
   app.appendChild(renderHeader());
-  const views = { home:renderHome, login:renderLogin, loading:renderLoading, error:renderError, cross:renderCross, result:renderResult, prefs:renderPrefs, bilan:renderBilan };
+  const views = { home:renderHome, login:renderLogin, loading:renderLoading, error:renderError, cross:renderCross, result:renderResult, prefs:renderPrefs, bilan:renderBilan, volume:renderVolume };
   app.appendChild((views[state.view]||renderHome)());
 }
 
-// Init
+// ─── Init ─────────────────────────────────────────────────────────────────────
 handleOAuthParams();
 if (!state.auth) state.view = 'login';
 render();
