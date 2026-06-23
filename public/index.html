@@ -679,43 +679,59 @@ function renderHome() {
       h('span', {style:{color:'#2d3748',fontSize:'18px'}}, '>')));
   });
 
-  // ── Bloc Ma semaine avec donut ─────────────────────────────────────────────
-  if (week) {
-    const runs = week.filter(function(w) { return normalizeRun(w.session); });
-    if (runs.length) {
-      // Volume cible = somme des km du plan
-      const targetKm = runs.reduce(function(sum, w) {
-        const km = parseFloat((w.distance || extractKm(w.session) || '0').replace(',', '.'));
-        return sum + (isNaN(km) ? 0 : km);
-      }, 0);
+  // Bloc Ma semaine avec donut
+  if (week && week.length) {
+    var todayJs = new Date().getDay();
+    var todayIdx = todayJs === 0 ? 6 : todayJs - 1; // 0=lun...6=dim
+    var DAY_ORDER = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 
-      // Volume effectué cette semaine (depuis lundi)
-      const nowW = new Date();
-      const dayW = nowW.getDay();
-      const diffW = (dayW === 0 ? -6 : 1 - dayW);
-      const mondayW = new Date(nowW);
-      mondayW.setDate(nowW.getDate() + diffW);
-      mondayW.setHours(0, 0, 0, 0);
+    // Completer a 7 jours
+    var fullWeek = DAY_ORDER.map(function(dayLabel) {
+      var found = week.find(function(w) { return w.day === dayLabel; });
+      return found || { day: dayLabel, session: 'Repos', color: '#374151', done: false };
+    });
 
-      // On lit le cache des activités récentes pour estimer le done
-      // On stocke le volume effectué cette semaine dans mc_week_done via l'état
-      // Ici on utilise une heuristique : semaine = lundi → maintenant
-      // Le volume réel n'est pas disponible sans appel Strava supplémentaire
-      // → on stocke le volume effectué dans localStorage mc_week_done_km
-      // mis à jour lors du dernier appel analyze (on le calcule côté serveur ou on approxime)
-      // Pour l'instant : on lit mc_week_done_km s'il existe, sinon 0
-      const doneKm = parseFloat(localStorage.getItem('mc_week_done_km') || '0') || 0;
+    // Volume cible = somme km des runs
+    var targetKm = fullWeek.reduce(function(sum, w) {
+      if (!normalizeRun(w.session)) return sum;
+      var km = parseFloat((w.distance || extractKm(w.session) || '0').replace(',', '.'));
+      return sum + (isNaN(km) ? 0 : km);
+    }, 0);
 
-      const cards = runs.map(function(w) {
-        const run = normalizeRun(w.session);
-        const km = w.distance || extractKm(w.session) || '';
-        return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'60px'}},
+    var doneKm = parseFloat(localStorage.getItem('mc_week_done_km') || '0') || 0;
+
+    var cards = fullWeek.map(function(w, idx) {
+      var run = normalizeRun(w.session);
+      var km = w.distance || extractKm(w.session) || '';
+      var isPast = idx < todayIdx;
+      var isToday = idx === todayIdx;
+      var isDone = w.done === true;
+
+      if (!run) {
+        if (isPast) return null;
+        return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'52px'}},
+          h('div', {style:{fontSize:'8px',color:'#2d3748',marginBottom:'4px',textTransform:'uppercase',fontWeight:'600'}}, w.day),
+          h('div', {style:{borderRadius:'10px',padding:'8px 4px',background:'#0a0d14',border:'1px solid #1a2035',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'66px'}},
+            h('div', {style:{fontSize:'9px',color:'#2d3748'}}, '—')));
+      }
+
+      if (isDone || (isPast && run)) {
+        return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'60px',opacity:'0.5'}},
           h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'4px',textTransform:'uppercase',fontWeight:'600'}}, w.day),
-          h('div', {style:{borderRadius:'10px',padding:'8px 6px',background:run.color+'15',border:'1px solid '+run.color+'30',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'3px',minHeight:'66px'}},
+          h('div', {style:{borderRadius:'10px',padding:'8px 6px',background:run.color+'10',border:'1px solid '+run.color+'20',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'3px',minHeight:'66px'}},
+            h('div', {style:{fontSize:'14px',lineHeight:'1',marginBottom:'2px'}}, '✓'),
             h('div', {style:{fontSize:'8px',color:run.color,fontWeight:'800',lineHeight:'1.2',textAlign:'center'}}, run.label),
-            km ? h('div', {style:{fontSize:'12px',color:'#e2e8f0',fontWeight:'900',lineHeight:'1',marginTop:'2px'}}, km) : null));
-      });
+            km ? h('div', {style:{fontSize:'11px',color:'#6b7280',fontWeight:'700',lineHeight:'1'}}, km) : null));
+      }
 
+      return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'60px'}},
+        h('div', {style:{fontSize:'8px',color: isToday ? '#a78bfa' : '#3b4560',marginBottom:'4px',textTransform:'uppercase',fontWeight: isToday ? '800' : '600'}}, w.day),
+        h('div', {style:{borderRadius:'10px',padding:'8px 6px',background:run.color+'15',border:'1px solid '+(isToday ? run.color+'80' : run.color+'30'),display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'3px',minHeight:'66px'}},
+          h('div', {style:{fontSize:'8px',color:run.color,fontWeight:'800',lineHeight:'1.2',textAlign:'center'}}, run.label),
+          km ? h('div', {style:{fontSize:'12px',color:'#e2e8f0',fontWeight:'900',lineHeight:'1',marginTop:'2px'}}, km) : null));
+    }).filter(Boolean);
+
+    if (cards.length) {
       children.push(
         h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px'}},
           h('div', {style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'12px'}},
@@ -724,7 +740,7 @@ function renderHome() {
               renderDonut(doneKm, targetKm, '#a78bfa'),
               h('div', {style:{textAlign:'right'}},
                 h('div', {style:{fontSize:'10px',color:'#a78bfa',fontWeight:'800'}}, Math.round(doneKm) + ' / ' + Math.round(targetKm) + ' km'),
-                h('div', {style:{fontSize:'9px',color:'#3b4560',marginTop:'2px'}}, 'effectué'))) : null),
+                h('div', {style:{fontSize:'9px',color:'#3b4560',marginTop:'2px'}}, 'effectue'))) : null),
           h.apply(null, ['div', {style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'2px'}}].concat(cards))));
     }
   }
