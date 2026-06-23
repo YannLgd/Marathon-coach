@@ -1,9 +1,39 @@
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  const { access_token, mode, extra, prefsPrompt, comment } = req.body;
+  const { access_token, mode, extra, prefsPrompt, comment, objective } = req.body;
 
   if (!access_token) return res.status(400).json({ error: "No access_token" });
+
+  // Mode spécial : récupérer l'historique volume sur 12 semaines
+  if (mode === "volume_history") {
+    const since = new Date();
+    since.setDate(since.getDate() - 84); // 12 semaines
+    const epoch = Math.floor(since.getTime() / 1000);
+    const stravaRes = await fetch(
+      `https://www.strava.com/api/v3/athlete/activities?per_page=100&after=${epoch}`,
+      { headers: { Authorization: `Bearer ${access_token}` } }
+    );
+    if (!stravaRes.ok) return res.status(401).json({ error: "Strava auth failed" });
+    const activities = await stravaRes.json();
+    const runs = activities.filter(a =>
+      a.type === "Run" || a.type === "TrailRun" ||
+      a.sport_type === "Run" || a.sport_type === "TrailRun"
+    );
+    // Grouper par semaine ISO (lundi = début)
+    const weekMap = {};
+    runs.forEach(a => {
+      const d = new Date(a.start_date);
+      const day = d.getDay();
+      const diff = (day === 0 ? -6 : 1 - day);
+      const monday = new Date(d);
+      monday.setDate(d.getDate() + diff);
+      monday.setHours(0, 0, 0, 0);
+      const key = monday.toISOString().slice(0, 10);
+      weekMap[key] = (weekMap[key] || 0) + a.distance / 1000;
+    });
+    return res.json({ weekMap });
+  }
 
   const stravaRes = await fetch(
     "https://www.strava.com/api/v3/athlete/activities?per_page=10",
@@ -15,9 +45,13 @@ export default async function handler(req, res) {
   const RACE_DATE = new Date("2026-09-14T08:00:00");
   const daysLeft = Math.ceil((RACE_DATE - new Date()) / 86400000);
 
+  // Objectif personnalisé ou défaut
+  const obj = objective || { distance: "42,2 km", time: "4h00", pace: "5'41\"/km" };
+  const objectiveStr = `objectif ${obj.time} · allure ${obj.pace} · ${obj.distance}`;
+
   // Calcul des runs déjà effectués cette semaine (lundi = début semaine)
   const now = new Date();
-  const dayOfWeek = now.getDay(); // 0=dim, 1=lun, ...
+  const dayOfWeek = now.getDay();
   const diffToMonday = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
   const monday = new Date(now);
   monday.setDate(now.getDate() + diffToMonday);
@@ -49,26 +83,23 @@ export default async function handler(req, res) {
     bilan: "Fais un bilan honnête et précis de la situation actuelle de l'athlète.",
   };
 
-  // Prompt runs déjà faits cette semaine
   const runsWeekPrompt = runsThisWeekCount > 0
     ? `\nATTENTION : Yann a déjà effectué ${runsThisWeekCount} séance(s) de course cette semaine (depuis lundi). Le champ week[] doit donc contenir exactement (sessions_total - ${runsThisWeekCount}) séances de course restantes, en ne planifiant que les jours qui n'ont pas encore eu lieu.`
     : "";
 
-  // Commentaire utilisateur
   const commentPrompt = comment && comment.trim()
     ? `\nCOMMENTAIRE DE L'ATHLÈTE (à prendre en compte dans l'analyse) : "${comment.trim()}"`
     : "";
 
-  // Schéma selon le mode
   const isBilan = mode === "bilan";
 
   const schema = isBilan
-    ? `{"niveau":"string (ex: Intermédiaire, Bon, Insuffisant)","tendance":"string (ex: En progression, Stable, En baisse)","acquis":["string","string","string"],"atravailler":["string","string","string"],"priorites":["string","string","string"],"verdict":"continuer"|"ameliorer"|"downgrade","verdictDetail":"string (2-3 phrases honnêtes sur l'objectif sub-4h)","confidence":75}`
+    ? `{"niveau":"string (ex: Intermédiaire, Bon, Insuffisant)","tendance":"string (ex: En progression, Stable, En baisse)","acquis":["string","string","string"],"atravailler":["string","string","string"],"priorites":["string","string","string"],"verdict":"continuer"|"ameliorer"|"downgrade","verdictDetail":"string (2-3 phrases honnêtes sur l'objectif)","confidence":75}`
     : `{"headline":"string (3 mots max)","type":"string","distance":"string","pace":"string","hr":"string","rpe":"string","tip":"string (1 phrase)","before":"string","during":"string","after":"string","gear":"string","why":"string (2-3 phrases)","confidence":75,"nextDay":"Lundi","week":[{"day":"Lun","session":"string","color":"#hex"},{"day":"Mar","session":"string","color":"#hex"},{"day":"Mer","session":"string","color":"#hex"},{"day":"Jeu","session":"string","color":"#hex"},{"day":"Ven","session":"string","color":"#hex"},{"day":"Sam","session":"string","color":"#hex"},{"day":"Dim","session":"string","color":"#hex"}]}`;
 
   const systemPrompt = isBilan
-    ? `Tu es un coach marathon expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : Yann · 73kg · Nice · objectif sub-4h · Marathon de Nice 14 sept 2026 · ${daysLeft} jours restants.${commentPrompt} Sois honnête et précis, ne surestimation pas le niveau. Schéma JSON : ${schema} — "confidence" est un entier 0-100 représentant ta confiance dans l'objectif sub-4h. "verdict" est exactement l'une des trois valeurs : "continuer", "ameliorer" ou "downgrade". "acquis", "atravailler" et "priorites" sont des tableaux de 3 strings courtes.`
-    : `Tu es un coach marathon expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : Yann · 73kg · Nice · sub-4h · Marathon de Nice 14 sept 2026 · ${daysLeft} jours restants.${prefsPrompt || ""}${runsWeekPrompt}${commentPrompt} Schéma JSON : ${schema} — Le champ "confidence" est un entier entre 0 et 100 représentant ta confiance dans l'atteinte de l'objectif sub-4h compte tenu de la progression actuelle. Le champ "nextDay" est le jour de la semaine en français (ex: "Lundi", "Mardi"...) où doit avoir lieu la prochaine séance.`;
+    ? `Tu es un coach marathon expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : Yann · 73kg · Nice · ${objectiveStr} · Marathon de Nice 14 sept 2026 · ${daysLeft} jours restants.${commentPrompt} Sois honnête et précis. Schéma JSON : ${schema} — "confidence" est un entier 0-100. "verdict" est exactement l'une des trois valeurs : "continuer", "ameliorer" ou "downgrade". "acquis", "atravailler" et "priorites" sont des tableaux de 3 strings courtes.`
+    : `Tu es un coach marathon expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : Yann · 73kg · Nice · ${objectiveStr} · Marathon de Nice 14 sept 2026 · ${daysLeft} jours restants.${prefsPrompt || ""}${runsWeekPrompt}${commentPrompt} Schéma JSON : ${schema} — Le champ "confidence" est un entier entre 0 et 100. Le champ "nextDay" est le jour de la semaine en français.`;
 
   const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -96,8 +127,9 @@ export default async function handler(req, res) {
 
   try {
     const result = JSON.parse(raw.slice(start, end + 1));
-    result._mode = mode; // permet au front de distinguer bilan vs séance
-    res.json({ result, activities: activities.slice(0, 5).map(a => ({
+    result._mode = mode;
+    const weekDoneKm = Math.round(runsThisWeek.reduce((s, a) => s + a.distance / 1000, 0) * 10) / 10;
+    res.json({ result, weekDoneKm, activities: activities.slice(0, 5).map(a => ({
       date: new Date(a.start_date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }),
       type: a.type,
       km: (a.distance / 1000).toFixed(1),
