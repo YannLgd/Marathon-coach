@@ -119,13 +119,13 @@ export default async function handler(req, res) {
         model: "claude-sonnet-4-6",
         max_tokens: 2048,
         system: systemPrompt,
+        // NOTE : pas de prefill assistant — Sonnet 4.6 renvoie une 400 si le
+        // dernier message est un message assistant (breaking change du modèle).
         messages: [
           {
             role: "user",
             content: `Activités Strava récentes :\n${activitySummary}\n\n${modePrompts[mode] || modePrompts.session}`,
           },
-          // Prefill : force le modèle à démarrer directement sur le JSON
-          { role: "assistant", content: "{" },
         ],
       }),
     });
@@ -136,7 +136,7 @@ export default async function handler(req, res) {
     }
 
     const claudeData = await claudeRes.json();
-    const raw = "{" + (claudeData.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+    const raw = (claudeData.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
     const start = raw.indexOf("{");
     const end = raw.lastIndexOf("}");
     if (start === -1 || end === -1) return res.status(500).json({ error: "JSON introuvable dans la réponse", raw });
