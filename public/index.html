@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Marathon" />
-  <link rel="manifest" href="/public/manifest.json" />
+  <link rel="manifest" href="/manifest.json" />
   <title>Marathon Coach</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -72,6 +72,20 @@ const DAYS_FR = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
 const FULL_DAYS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
 const MONTHS_FR = ["jan","fev","mar","avr","mai","juin","juil","aout","sep","oct","nov","dec"];
 
+// Objectif chrono (minutes, défaut 240 = 4h00)
+function loadGoal() { const v = parseInt(localStorage.getItem('mc_goal')); return v > 0 ? v : 240; }
+function saveGoal(min) { localStorage.setItem('mc_goal', String(min)); }
+function goalLabel(min) { return Math.floor(min/60) + 'h' + String(min%60).padStart(2,'0'); }
+function paceLabel(min) { const s = Math.round(min*60/42.195); return Math.floor(s/60) + "'" + String(s%60).padStart(2,'0') + '"/km'; }
+
+// Âge d'un cache : heures puis jours
+function formatAge(savedAt) {
+  const h = Math.round((Date.now() - savedAt) / 3600000);
+  if (h < 1) return "moins d'1h";
+  if (h < 48) return h + 'h';
+  return Math.round(h / 24) + ' jours';
+}
+
 // Cache helpers
 function saveCache(result) {
   localStorage.setItem("mc_last_result", JSON.stringify({ result, savedAt: Date.now() }));
@@ -98,6 +112,36 @@ function saveBilan(result) {
 function loadBilan() {
   try { return JSON.parse(localStorage.getItem("mc_last_bilan") || "null"); } catch { return null; }
 }
+function saveActivities(list) {
+  if (list && list.length) localStorage.setItem("mc_last_activities", JSON.stringify(list));
+}
+function loadActivities() {
+  try { return JSON.parse(localStorage.getItem("mc_last_activities") || "null"); } catch { return null; }
+}
+function saveVolume(v) {
+  if (v && v.length) localStorage.setItem("mc_volume_history", JSON.stringify(v));
+}
+function loadVolume() {
+  try { return JSON.parse(localStorage.getItem("mc_volume_history") || "null"); } catch { return null; }
+}
+function saveWeekDone(km) {
+  if (km !== undefined && km !== null) localStorage.setItem("mc_week_done_km", String(km));
+}
+function loadWeekDone() {
+  const v = localStorage.getItem("mc_week_done_km");
+  return v !== null ? parseFloat(v) : null;
+}
+
+// Jours écoulés depuis le dernier run (à partir des activités en cache)
+function daysSinceLastRun() {
+  const acts = loadActivities();
+  if (!acts) return null;
+  const lastRun = acts.find(function(a) { return a.run; });
+  if (!lastRun || !lastRun.iso) return null;
+  const d = new Date(lastRun.iso + 'T00:00:00');
+  if (isNaN(d.getTime())) return null;
+  return Math.floor((Date.now() - d.getTime()) / 86400000);
+}
 
 // Prefs helpers
 function loadPrefs() {
@@ -110,7 +154,7 @@ function savePrefsData(p) {
 function getPrefsPrompt(p) {
   const dayNames = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"];
   const selected = [...p.days].sort((a,b)=>a-b).map(d => dayNames[d]).join(", ");
-  return "\nPREFERENCES IMPORTANTES - respecter strictement : EXACTEMENT " + p.sessions + " seances de course par semaine (pas plus, pas moins). Jours disponibles pour courir : " + (selected || "non precises") + ". Les autres jours doivent etre Repos ou cross-training. Le champ week[] doit contenir exactement " + p.sessions + " entrees avec une vraie seance de course.";
+  return "\nPREFERENCES IMPORTANTES - respecter strictement : EXACTEMENT " + p.sessions + " seances de course par semaine (pas plus, pas moins), reparties uniquement sur les jours disponibles : " + (selected || "non precises") + ". Les autres jours : Repos ou cross-training. Le champ week[] contient TOUJOURS exactement 7 entrees (Lun a Dim), jamais moins.";
 }
 
 // Extrait le kilometrage depuis une string type "EF 12km" ou "Tempo 10 km"
@@ -118,6 +162,17 @@ function extractKm(session) {
   if (!session) return '';
   const m = session.match(/(\d+(?:[.,]\d+)?)\s*km/i);
   return m ? m[1] + 'km' : '';
+}
+
+// Normalise une séance course en 4 types (accents ignorés)
+function normalizeRun(s) {
+  if (!s) return null;
+  const sl = s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (/(fractionn|interval|vma|repet)/.test(sl)) return { label:'Fractionne', color:'#f87171' };
+  if (/(tempo|seuil|allure marathon|allure spe)/.test(sl)) return { label:'Tempo', color:'#fbbf24' };
+  if (/(sortie longue|long run|\bsl\b)/.test(sl)) return { label:'Sortie longue', color:'#a78bfa' };
+  if (/(footing|\bef\b|endurance fond|recup|regen)/.test(sl)) return { label:'Footing', color:'#60a5fa' };
+  return null;
 }
 
 // Overlay helpers
@@ -150,7 +205,7 @@ function showCommentDialog(onConfirm) {
   const textarea = document.createElement('textarea');
   textarea.className = 'dialog-textarea';
   textarea.placeholder = 'Ex : J\'ai mal au mollet gauche depuis hier, grosse semaine de travail...';
-  // Pré-remplir avec commentaire sauvé si présent
+  // Pré-remplir avec le commentaire non consommé (analyse annulée ou en erreur)
   const savedComment = localStorage.getItem('mc_pending_comment') || '';
   textarea.value = savedComment;
 
@@ -160,7 +215,8 @@ function showCommentDialog(onConfirm) {
   const btnCancel = document.createElement('button');
   btnCancel.className = 'dialog-btn-cancel';
   btnCancel.textContent = 'Annuler';
-  btnCancel.onclick = function() { clearOverlay(); onConfirm(null); };
+  // Annuler = fermer sans lancer l'analyse
+  btnCancel.onclick = function() { clearOverlay(); };
 
   const btnOk = document.createElement('button');
   btnOk.className = 'dialog-btn-ok';
@@ -215,12 +271,11 @@ function showDisconnectConfirm() {
   btnOk.textContent = 'Déconnecter';
   btnOk.onclick = function() {
     clearOverlay();
-    localStorage.removeItem('mc_auth');
-    localStorage.removeItem('mc_last_result');
-    localStorage.removeItem('mc_weekly_plan');
-    localStorage.removeItem('mc_confidence');
-    localStorage.removeItem('mc_pending_comment');
-    setState({ auth: null, result: null, view: 'login' });
+    // Efface toutes les données d'analyse (mc_prefs et mc_goal sont conservés : préférences utilisateur)
+    ['mc_auth','mc_last_result','mc_weekly_plan','mc_confidence','mc_pending_comment',
+     'mc_last_bilan','mc_last_activities','mc_volume_history','mc_week_done_km']
+      .forEach(function(k) { localStorage.removeItem(k); });
+    setState({ auth: null, result: null, savedAt: null, view: 'login' });
   };
 
   actions.appendChild(btnCancel);
@@ -242,6 +297,7 @@ let state = {
   result: cached ? cached.result : null,
   savedAt: cached ? cached.savedAt : null,
   auth: JSON.parse(localStorage.getItem("mc_auth") || "null"),
+  lastAction: null,
 };
 
 function setState(patch) { state = { ...state, ...patch }; render(); }
@@ -282,21 +338,29 @@ function analyzeWithComment(mode, extra) {
 async function analyze(mode, extra, comment) {
   if (!extra) extra = "";
   if (!comment) comment = "";
-  setState({ loading:true, error:null, view:"loading" });
+  setState({ loading:true, error:null, view:"loading", lastAction:{ mode:mode, extra:extra, comment:comment } });
   try {
     const token = await getValidToken();
     if (!token) { setState({ loading:false, view:"login" }); return; }
     const prefs = loadPrefs();
     const prefsPrompt = getPrefsPrompt(prefs);
-    const res = await fetch("/api/analyze", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ access_token:token, mode, extra, prefsPrompt, comment }) });
+    const res = await fetch("/api/analyze", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ access_token:token, mode:mode, extra:extra, prefsPrompt:prefsPrompt, comment:comment, goal:loadGoal() }) });
     const data = await res.json();
     if (!res.ok || !data.result) throw new Error(data.error || "Erreur serveur");
+
+    // Données communes à tous les modes
+    if (data.activities) saveActivities(data.activities);
+    if (data.volume) saveVolume(data.volume);
+    saveWeekDone(data.weekDoneKm);
+    if (data.result.confidence !== undefined) saveConfidence(data.result.confidence);
+    localStorage.removeItem('mc_pending_comment'); // commentaire consommé
+
     if (data.result._mode === 'bilan') {
       saveBilan(data.result);
-      setState({ loading:false, result:data.result, savedAt:Date.now(), view:"bilan" });
+      // Isolation d'état : le bilan ne touche JAMAIS state.result ni mc_last_result
+      setState({ loading:false, view:"bilan" });
     } else {
       if (data.result.week) saveWeeklyPlan(data.result.week);
-      if (data.result.confidence !== undefined) saveConfidence(data.result.confidence);
       saveCache(data.result);
       setState({ loading:false, result:data.result, savedAt:Date.now(), view:"result" });
     }
@@ -318,6 +382,21 @@ function h(tag, attrs) {
   return el;
 }
 
+// Donut SVG (fait vs planifié)
+function donutEl(done, planned) {
+  const pct = planned > 0 ? Math.min(100, done / planned * 100) : 0;
+  const r = 18, c = (2 * Math.PI * r).toFixed(1);
+  const off = (c * (1 - pct / 100)).toFixed(1);
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'width:48px;height:48px;flex-shrink:0;';
+  wrap.innerHTML = '<svg width="48" height="48" viewBox="0 0 48 48">' +
+    '<circle cx="24" cy="24" r="18" fill="none" stroke="#1a2035" stroke-width="5"/>' +
+    '<circle cx="24" cy="24" r="18" fill="none" stroke="#7c3aed" stroke-width="5" stroke-linecap="round" stroke-dasharray="' + c + '" stroke-dashoffset="' + off + '" transform="rotate(-90 24 24)"/>' +
+    '<text x="24" y="28" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="800">' + Math.round(pct) + '%</text>' +
+    '</svg>';
+  return wrap;
+}
+
 // Confidence color
 function confidenceColor(v) {
   if (v >= 75) return '#34d399';
@@ -328,6 +407,7 @@ function confidenceColor(v) {
 // Header
 function renderHeader() {
   const days = getDays(), phase = getPhase(days);
+  const gm = loadGoal();
   const resultData = state.result || (loadCache() ? loadCache().result : null);
   const next = resultData ? { session: resultData.headline, label: resultData.type, nextDay: resultData.nextDay } : null;
   const confidence = loadConfidence();
@@ -352,10 +432,10 @@ function renderHeader() {
         h('div', {style:{fontSize:'12px',fontWeight:'800',color:'#a78bfa',lineHeight:'1'}}, '42,2 km')),
       h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:'2px solid #60a5fa25',textAlign:'center'}},
         h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, 'Objectif'),
-        h('div', {style:{fontSize:'12px',fontWeight:'800',color:'#60a5fa',lineHeight:'1'}}, "4h00'00")),
+        h('div', {style:{fontSize:'12px',fontWeight:'800',color:'#60a5fa',lineHeight:'1'}}, goalLabel(gm) + "'00")),
       h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:'2px solid #34d39925',textAlign:'center'}},
         h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, 'Allure'),
-        h('div', {style:{fontSize:'12px',fontWeight:'800',color:'#34d399',lineHeight:'1'}}, "5'41\"/km"))),
+        h('div', {style:{fontSize:'12px',fontWeight:'800',color:'#34d399',lineHeight:'1'}}, paceLabel(gm)))),
     // Indice de confiance sous l'objectif
     confidence !== null ? h('div', {style:{display:'flex',alignItems:'center',gap:'10px',background:'#0e1118',borderRadius:'10px',padding:'9px 14px',marginBottom: next ? '10px' : '0',border:'1px solid #1a2035'}},
       h('div', {style:{flex:'1'}},
@@ -365,11 +445,9 @@ function renderHeader() {
       h('div', {style:{fontSize:'18px',fontWeight:'900',color:confidenceColor(confidence),lineHeight:'1',minWidth:'36px',textAlign:'right'}}, confidence + '/100')) : null,
     next ? h('div', {
       onclick: function() {
-        if (!state.result) {
-          const c = loadCache();
-          if (c) state.result = c.result;
-        }
-        setState({ view:'result' });
+        // Toujours réhydrater depuis localStorage avant de naviguer (fix Safari iOS)
+        const r = state.result || (loadCache() ? loadCache().result : null);
+        setState({ result: r, view:'result' });
       },
       style:{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#0e1118',borderRadius:'10px',padding:'10px 14px',border:'1px solid #1a2035',cursor:'pointer',marginBottom:'6px'}},
       h('div', null,
@@ -382,15 +460,13 @@ function renderHeader() {
       const d = b.result;
       const verdictColor = { continuer:'#34d399', ameliorer:'#60a5fa', downgrade:'#f87171' };
       const color = verdictColor[d.verdict] || '#a78bfa';
-      const bilanAge = Math.round((Date.now() - b.savedAt) / 3600000);
-      const ageLabel = bilanAge < 1 ? "< 1h" : bilanAge + 'h';
       return h('div', {
         onclick: function() {
           setState({ view:'bilan' });
         },
         style:{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#0a0d14',borderRadius:'10px',padding:'9px 14px',border:'1px solid #151c2a',cursor:'pointer'}},
         h('div', null,
-          h('div', {style:{fontSize:'8px',color:'#2d3748',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, 'Bilan · il y a ' + ageLabel),
+          h('div', {style:{fontSize:'8px',color:'#2d3748',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, 'Bilan · il y a ' + formatAge(b.savedAt)),
           h('div', {style:{fontSize:'12px',fontWeight:'600',color:color}}, (d.niveau||'') + (d.tendance ? ' · ' + d.tendance : ''))),
         h('span', {style:{color:'#2d3748',fontSize:'16px'}}, '>'));
     })()
@@ -405,25 +481,28 @@ function renderHome() {
 
   const btns = [
     {id:'session',icon:'⚡',label:'Ma prochaine seance',sub:'Analyse Strava · utilise des tokens'},
-    {id:'fatigue',icon:'😮',label:'Je suis fatigue',   sub:'Adapter la charge · utilise des tokens'},
+    {id:'week',   icon:'📅',label:'Prochaine semaine',  sub:'Programme 7 jours · utilise des tokens'},
+    {id:'fatigue',icon:'😮',label:'Je suis fatigue',    sub:'Adapter la charge · utilise des tokens'},
     {id:'cross',  icon:'🚴',label:'Autre sport fait',   sub:'Velo, natation, rando · utilise des tokens'},
     {id:'bilan',  icon:'🔍',label:'Analyse de situation', sub:'Bilan honnete de ta progression · utilise des tokens'},
   ];
-
-  const normalizeRun = function(s) {
-    if (!s) return null;
-    const sl = s.toLowerCase();
-    if (sl.indexOf('fractionn') >= 0 || sl.indexOf('interval') >= 0 || sl.indexOf('vma') >= 0 || sl.indexOf('repet') >= 0) return { label:'Fractionne', color:'#f87171' };
-    if (sl.indexOf('tempo') >= 0 || sl.indexOf('seuil') >= 0 || sl.indexOf('allure marathon') >= 0) return { label:'Tempo', color:'#fbbf24' };
-    if (sl.indexOf('sortie longue') >= 0 || sl.indexOf('long run') >= 0) return { label:'Sortie longue', color:'#a78bfa' };
-    if (sl.indexOf('footing') >= 0 || sl.indexOf('ef ') >= 0 || sl.indexOf('endurance fond') >= 0 || sl.indexOf('recup') >= 0 || sl.indexOf('regen') >= 0) return { label:'Footing', color:'#60a5fa' };
-    return null;
-  };
 
   const children = [
     h('div', {style:{fontSize:'14px',fontWeight:'700',color:'#e2e8f0',marginBottom:'3px'}}, 'Bonjour ' + name + ' 👋'),
     !cache ? h('div', {style:{fontSize:'12px',color:'#4b5563',marginBottom:'16px'}}, 'Lance une analyse pour obtenir ta premiere seance.') : null
   ];
+
+  // Alerte X jours sans course
+  const noRunDays = daysSinceLastRun();
+  if (noRunDays !== null && noRunDays >= 4) {
+    children.push(h('div', {style:{display:'flex',alignItems:'center',gap:'10px',background:'#1a0505',border:'1px solid #f8717130',borderRadius:'12px',padding:'12px 14px',marginTop:'10px',marginBottom:'12px'}},
+      h('span', {style:{fontSize:'18px'}}, '⚠️'),
+      h('div', null,
+        h('div', {style:{fontSize:'13px',fontWeight:'700',color:'#f87171'}}, noRunDays + ' jours sans course'),
+        h('div', {style:{fontSize:'11px',color:'#6b7280'}}, 'Pense a relancer en douceur.'))));
+  } else {
+    children.push(h('div', {style:{marginBottom:'12px'}}));
+  }
 
   btns.forEach(function(b) {
     children.push(h('button', {
@@ -439,24 +518,55 @@ function renderHome() {
       h('span', {style:{color:'#2d3748',fontSize:'18px'}}, '>')));
   });
 
-  // Bloc Ma semaine
+  // Bloc Ma semaine (runs uniquement, séances faites cochées) + donut fait/planifié
   if (week) {
     const runs = week.filter(function(w) { return normalizeRun(w.session); });
     if (runs.length) {
+      const doneKm = loadWeekDone();
+      const plannedKm = runs.reduce(function(s, w) {
+        const km = parseFloat((extractKm(w.session) || '0').replace(',', '.'));
+        return s + (isNaN(km) ? 0 : km);
+      }, 0);
+
       const cards = runs.map(function(w) {
         const run = normalizeRun(w.session);
         const km = w.distance || extractKm(w.session) || '';
-        return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'64px'}},
-          h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'4px',textTransform:'uppercase',fontWeight:'600'}}, w.day),
+        return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'64px',opacity: w.done ? '0.5' : '1'}},
+          h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'4px',textTransform:'uppercase',fontWeight:'600'}}, w.day + (w.done ? ' ✓' : '')),
           h('div', {style:{borderRadius:'10px',padding:'8px 6px',background:run.color+'15',border:'1px solid '+run.color+'30',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'3px',minHeight:'66px'}},
             h('div', {style:{fontSize:'8px',color:run.color,fontWeight:'800',lineHeight:'1.2',textAlign:'center'}}, run.label),
             km ? h('div', {style:{fontSize:'12px',color:'#e2e8f0',fontWeight:'900',lineHeight:'1',marginTop:'2px'}}, km) : null));
       });
+
       children.push(
         h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px'}},
           h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontWeight:'700'}}, 'Ma semaine'),
+          (doneKm !== null && plannedKm > 0) ? h('div', {style:{display:'flex',alignItems:'center',gap:'12px',marginBottom:'12px'}},
+            donutEl(doneKm, plannedKm),
+            h('div', null,
+              h('div', {style:{fontSize:'16px',fontWeight:'900',color:'#e2e8f0',lineHeight:'1'}}, doneKm + ' / ' + Math.round(plannedKm) + ' km'),
+              h('div', {style:{fontSize:'10px',color:'#4b5563',marginTop:'4px'}}, 'Volume hebdo · fait vs planifie'))) : null,
           h.apply(null, ['div', {style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'2px'}}].concat(cards))));
     }
+  }
+
+  // Graphe volume course · 12 semaines
+  const vol = loadVolume();
+  if (vol && vol.length) {
+    const maxKm = Math.max.apply(null, vol.map(function(v){ return v.km; }).concat([1]));
+    const bars = vol.map(function(v, i) {
+      const isCurrent = i === vol.length - 1;
+      const hPct = v.km > 0 ? Math.max(6, Math.round(v.km / maxKm * 100)) : 0;
+      return h('div', {style:{flex:'1',display:'flex',flexDirection:'column',justifyContent:'flex-end',height:'64px'}},
+        h('div', {style:{height:hPct+'%',background:isCurrent?'#7c3aed':'#242c42',borderRadius:'3px 3px 0 0',minHeight:v.km>0?'3px':'2px',opacity:v.km>0?'1':'0.4'}}));
+    });
+    children.push(
+      h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px'}},
+        h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontWeight:'700'}}, 'Volume course · 12 semaines'),
+        h.apply(null, ['div', {style:{display:'flex',gap:'4px',alignItems:'flex-end'}}].concat(bars)),
+        h('div', {style:{display:'flex',justifyContent:'space-between',marginTop:'8px'}},
+          h('span', {style:{fontSize:'9px',color:'#3b4560'}}, 'S-11'),
+          h('span', {style:{fontSize:'9px',color:'#a78bfa',fontWeight:'700'}}, 'Cette semaine · ' + vol[vol.length-1].km + ' km'))));
   }
 
   children.push(h('button', {
@@ -470,14 +580,40 @@ function renderHome() {
 // Preferences
 function renderPrefs() {
   const prefs = loadPrefs();
-  var draft = { sessions: prefs.sessions, days: prefs.days.slice() };
+  var draft = { sessions: prefs.sessions, days: prefs.days.slice(), goal: loadGoal() };
   const DAY_LABELS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
+  const GOALS = [{min:225,label:'3h45'},{min:240,label:'4h00'},{min:255,label:'4h15'},{min:270,label:'4h30'}];
 
   function buildUI() {
     const container = document.getElementById('prefs-container');
     if (!container) return;
     container.innerHTML = '';
 
+    // Objectif chrono
+    const goalBlock = document.createElement('div');
+    goalBlock.style.cssText = 'background:#0e1118;border:1px solid #1a2035;border-radius:14px;padding:16px;margin-bottom:12px;';
+    const goalTitle = document.createElement('div');
+    goalTitle.style.cssText = 'font-size:9px;color:#3b4560;text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;font-weight:700;';
+    goalTitle.textContent = 'Objectif chrono';
+    goalBlock.appendChild(goalTitle);
+    const goalRow = document.createElement('div');
+    goalRow.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;';
+    GOALS.forEach(function(g) {
+      const active = draft.goal === g.min;
+      const btn = document.createElement('button');
+      btn.textContent = g.label;
+      btn.style.cssText = 'padding:12px 0;border-radius:10px;border:2px solid '+(active?'#7c3aed':'#1a2035')+';background:'+(active?'#1a0f35':'#0e1118')+';color:'+(active?'#a78bfa':'#4b5563')+';font-size:13px;font-weight:800;cursor:pointer;';
+      btn.onclick = function() { draft.goal = g.min; buildUI(); };
+      goalRow.appendChild(btn);
+    });
+    goalBlock.appendChild(goalRow);
+    const goalInfo = document.createElement('div');
+    goalInfo.style.cssText = 'font-size:11px;color:#4b5563;text-align:center;line-height:1.5;';
+    goalInfo.textContent = 'Allure cible : ' + paceLabel(draft.goal) + ' · changer l\'objectif efface les analyses en cache';
+    goalBlock.appendChild(goalInfo);
+    container.appendChild(goalBlock);
+
+    // Séances / semaine
     const sessBlock = document.createElement('div');
     sessBlock.style.cssText = 'background:#0e1118;border:1px solid #1a2035;border-radius:14px;padding:16px;margin-bottom:12px;';
     const sessTitle = document.createElement('div');
@@ -497,6 +633,7 @@ function renderPrefs() {
     sessBlock.appendChild(sessRow);
     container.appendChild(sessBlock);
 
+    // Jours disponibles
     const daysBlock = document.createElement('div');
     daysBlock.style.cssText = 'background:#0e1118;border:1px solid #1a2035;border-radius:14px;padding:16px;margin-bottom:20px;';
     const daysTitle = document.createElement('div');
@@ -525,7 +662,7 @@ function renderPrefs() {
     if (summary) {
       const dayNames = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"];
       const sel = draft.days.slice().sort(function(a,b){return a-b;}).map(function(d){return dayNames[d];});
-      summary.textContent = sel.length ? draft.sessions + ' seances · ' + sel.join(', ') : draft.sessions + ' seances · aucun jour selectionne';
+      summary.textContent = 'Objectif ' + goalLabel(draft.goal) + ' · ' + draft.sessions + ' seances · ' + (sel.length ? sel.join(', ') : 'aucun jour selectionne');
     }
   }
 
@@ -559,8 +696,19 @@ function renderPrefs() {
   saveBtn.textContent = '✓ Sauvegarder';
   saveBtn.style.cssText = 'width:100%;padding:16px;background:#7c3aed;color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;';
   saveBtn.onclick = function() {
-    savePrefsData(draft);
-    saveBtn.textContent = '✓ Sauvegarde !';
+    const goalChanged = draft.goal !== loadGoal();
+    savePrefsData({ sessions: draft.sessions, days: draft.days });
+    if (goalChanged) {
+      saveGoal(draft.goal);
+      // Invalidation des caches : les analyses existantes sont basées sur l'ancien objectif
+      ['mc_last_result','mc_weekly_plan','mc_confidence','mc_last_bilan','mc_week_done_km']
+        .forEach(function(k) { localStorage.removeItem(k); });
+      state.result = null;
+      state.savedAt = null;
+      saveBtn.textContent = '✓ Objectif mis a jour · caches effaces';
+    } else {
+      saveBtn.textContent = '✓ Sauvegarde !';
+    }
     saveBtn.style.background = '#059669';
     setTimeout(function() { saveBtn.textContent = '✓ Sauvegarder'; saveBtn.style.background = '#7c3aed'; }, 1800);
   };
@@ -595,6 +743,10 @@ function renderError() {
     h('div', {style:{background:'#1a0a0a',borderRadius:'14px',padding:'20px',border:'1px solid #3a1515',marginBottom:'16px'}},
       h('div', {style:{fontSize:'15px',fontWeight:'700',color:'#f87171',marginBottom:'8px'}}, 'Erreur'),
       h('div', {style:{fontSize:'12px',color:'#6b7280',lineHeight:'1.5',wordBreak:'break-word'}}, state.error)),
+    state.lastAction ? h('button', {
+      onclick: function() { analyze(state.lastAction.mode, state.lastAction.extra, state.lastAction.comment); },
+      style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#7c3aed',color:'#fff',fontSize:'14px',fontWeight:'700',marginBottom:'10px'}
+    }, '↻ Reessayer') : null,
     h('button', {onclick:function(){setState({view:'home',error:null});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#e2e8f0',fontSize:'14px',fontWeight:'700'}}, '← Retour'));
 }
 
@@ -615,7 +767,6 @@ function renderResult() {
   const d = state.result || (cached2 ? cached2.result : null);
   if (!d) return renderHome();
   const cache = loadCache();
-  const cacheAge = cache ? Math.round((Date.now() - cache.savedAt) / 3600000) : null;
 
   const stat = function(label,value,color) {
     return h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'13px 12px',borderBottom:'2px solid '+color+'35'}},
@@ -632,7 +783,7 @@ function renderResult() {
   };
 
   const children = [
-    cacheAge !== null ? h('div', {style:{fontSize:'10px',color:'#2d3748',marginBottom:'10px',textAlign:'right'}}, 'En cache · il y a '+(cacheAge < 1 ? "moins d'1h" : cacheAge+'h')) : null,
+    cache ? h('div', {style:{fontSize:'10px',color:'#2d3748',marginBottom:'10px',textAlign:'right'}}, 'En cache · il y a ' + formatAge(cache.savedAt)) : null,
     h('div', {style:{background:'linear-gradient(135deg,#1a0f35,#0d1a35)',borderRadius:'16px',padding:'20px 18px',marginBottom:'10px',border:'1px solid #2a1f4a'}},
       h('div', {style:{fontSize:'9px',color:'#4b5563',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'5px',fontWeight:'700'}}, d.nextDay ? 'Seance recommandee · ' + d.nextDay : 'Seance recommandee'),
       h('div', {style:{fontSize:'24px',fontWeight:'900',color:'#fff',letterSpacing:'-0.5px',marginBottom:'3px'}}, d.headline),
@@ -650,9 +801,9 @@ function renderResult() {
 
   if (d.week) {
     const weekCards = d.week.map(function(w) {
-      return h('div', null,
-        h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'5px',textTransform:'uppercase',textAlign:'center',fontWeight:'600'}}, w.day),
-        h('div', {style:{borderRadius:'7px',padding:'5px 2px',background:(w.color||'#374151')+'18',border:'1px solid '+(w.color||'#374151')+'30',fontSize:'7px',color:w.color||'#374151',fontWeight:'700',minHeight:'34px',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:'1.2',textAlign:'center'}}, w.session));
+      return h('div', {style:{opacity: w.done ? '0.5' : '1'}},
+        h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'5px',textTransform:'uppercase',textAlign:'center',fontWeight:'600'}}, w.day + (w.done ? ' ✓' : '')),
+        h('div', {style:{borderRadius:'7px',padding:'6px 2px',background:(w.color||'#374151')+'18',border:'1px solid '+(w.color||'#374151')+'30',fontSize:'9px',color:w.color||'#374151',fontWeight:'700',minHeight:'40px',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:'1.2',textAlign:'center'}}, w.session));
     });
     children.push(h.apply(null, ['div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
       h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontWeight:'700'}}, 'Bloc semaine'),
@@ -674,10 +825,9 @@ function renderBilan() {
   const cached3 = loadBilan();
   const d = cached3 ? cached3.result : null;
   if (!d) return renderHome();
-  const cacheAge = cached3 ? Math.round((Date.now() - cached3.savedAt) / 3600000) : null;
 
   const verdictConfig = {
-    continuer: { label: 'Continuer sur sub-4h', color: '#34d399', bg: '#032118', icon: '✅' },
+    continuer: { label: 'Continuer sur ' + goalLabel(loadGoal()), color: '#34d399', bg: '#032118', icon: '✅' },
     ameliorer:  { label: 'Objectif améliorable', color: '#60a5fa', bg: '#0d1f3c', icon: '🚀' },
     downgrade:  { label: 'Revoir à la baisse',   color: '#f87171', bg: '#1a0505', icon: '⚠️' },
   };
@@ -700,7 +850,7 @@ function renderBilan() {
   }
 
   const children = [
-    cacheAge !== null ? h('div', {style:{fontSize:'10px',color:'#2d3748',marginBottom:'10px',textAlign:'right'}}, 'En cache · il y a '+(cacheAge < 1 ? "moins d'1h" : cacheAge+'h')) : null,
+    h('div', {style:{fontSize:'10px',color:'#2d3748',marginBottom:'10px',textAlign:'right'}}, 'En cache · il y a ' + formatAge(cached3.savedAt)),
 
     // Niveau + tendance
     h('div', {style:{background:'linear-gradient(135deg,#1a0f35,#0d1a35)',borderRadius:'16px',padding:'18px',marginBottom:'10px',border:'1px solid #2a1f4a'}},
@@ -738,7 +888,8 @@ function renderBilan() {
 function render() {
   const app = document.getElementById('app');
   app.innerHTML = '';
-  app.appendChild(renderHeader());
+  // Pas de header sur l'écran de connexion
+  if (state.view !== 'login') app.appendChild(renderHeader());
   const views = { home:renderHome, login:renderLogin, loading:renderLoading, error:renderError, cross:renderCross, result:renderResult, prefs:renderPrefs, bilan:renderBilan };
   app.appendChild((views[state.view]||renderHome)());
 }
