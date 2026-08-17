@@ -6,41 +6,381 @@
   <meta name="theme-color" content="#07090f" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Marathon" />
-  <link rel="manifest" href="/public/manifest.json" />
-  <title>Marathon Coach</title>
+  <meta name="apple-mobile-web-app-title" content="Coach" />
+  <link rel="manifest" href="/manifest.json" />
+  <title>Coach</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-    body { background: #07090f; color: #e2e8f0; font-family: -apple-system, 'Inter', system-ui, sans-serif; min-height: 100vh; max-width: 430px; margin: 0 auto; padding-bottom: 40px; }
+    body { background: #07090f; color: #e2e8f0; font-family: -apple-system, 'Inter', system-ui, sans-serif; min-height: 100vh; max-width: 430px; margin: 0 auto; padding-bottom: 40px; padding-top: env(safe-area-inset-top); }
     button { border: none; cursor: pointer; font-family: inherit; }
+    input { font-family: inherit; }
     @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
     @keyframes spin { to { transform: rotate(360deg); } }
     .fade { animation: fadeUp 0.35s ease both; }
+
+    /* Dialog overlay */
+    .dialog-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+      display: flex; align-items: flex-end; justify-content: center;
+      z-index: 100; padding: 0 0 env(safe-area-inset-bottom);
+      animation: fadeUp 0.2s ease both;
+    }
+    .dialog-box {
+      background: #1e293b; border-radius: 20px 20px 0 0;
+      padding: 24px 20px 32px; width: 100%; max-width: 430px;
+      border-top: 1px solid #2d3748;
+    }
+    .dialog-title { font-size: 15px; font-weight: 700; color: #e2e8f0; margin-bottom: 6px; }
+    .dialog-sub { font-size: 12px; color: #4b5563; margin-bottom: 16px; line-height: 1.5; }
+    .dialog-textarea {
+      width: 100%; background: #0e1118; border: 1px solid #2d3748; border-radius: 12px;
+      color: #e2e8f0; font-size: 14px; font-family: inherit; padding: 14px;
+      resize: none; outline: none; line-height: 1.5; min-height: 100px;
+    }
+    .dialog-textarea:focus { border-color: #7c3aed; }
+    .dialog-actions { display: flex; gap: 10px; margin-top: 12px; }
+    .dialog-btn-cancel { flex: 1; padding: 14px; background: transparent; border: 1px solid #2d3748; border-radius: 12px; color: #6b7280; font-size: 14px; font-weight: 600; }
+    .dialog-btn-ok { flex: 2; padding: 14px; background: #7c3aed; border-radius: 12px; color: #fff; font-size: 14px; font-weight: 700; }
+
+    /* Confirm dialog */
+    .confirm-box {
+      background: #1e293b; border-radius: 20px 20px 0 0;
+      padding: 28px 20px 32px; width: 100%; max-width: 430px;
+      border-top: 1px solid #2d3748; text-align: center;
+    }
+    .confirm-icon { font-size: 32px; margin-bottom: 12px; }
+    .confirm-title { font-size: 16px; font-weight: 700; color: #e2e8f0; margin-bottom: 8px; }
+    .confirm-sub { font-size: 13px; color: #4b5563; margin-bottom: 24px; line-height: 1.5; }
+    .confirm-actions { display: flex; gap: 10px; }
+    .confirm-btn-cancel { flex: 1; padding: 14px; background: transparent; border: 1px solid #2d3748; border-radius: 12px; color: #6b7280; font-size: 14px; font-weight: 600; }
+    .confirm-btn-ok { flex: 1; padding: 14px; background: #ef4444; border-radius: 12px; color: #fff; font-size: 14px; font-weight: 700; }
+
+    /* Objective editor inputs */
+    .obj-input {
+      width: 100%; background: #0e1118; border: 1px solid #1a2035; border-radius: 10px;
+      color: #e2e8f0; font-size: 14px; padding: 12px 12px; outline: none;
+    }
+    .obj-input:focus { border-color: #7c3aed; }
+    .obj-input::placeholder { color: #3b4560; }
+    .obj-label { font-size: 8px; color: #3b4560; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px; font-weight: 700; }
   </style>
 </head>
 <body>
 <div id="app"></div>
+<div id="overlay-root"></div>
 <script>
-const RACE_DATE = new Date("2026-09-14T08:00:00");
-const getDays = () => Math.max(0, Math.ceil((RACE_DATE - new Date()) / 86400000));
-const getPhase = d => {
-  if (d > 63) return { label:"Fondamentaux", color:"#60a5fa", bg:"#0d1f3c" };
-  if (d > 35) return { label:"Construction",  color:"#a78bfa", bg:"#1a0f35" };
-  if (d > 14) return { label:"Affûtage",      color:"#fbbf24", bg:"#2d1f00" };
-  return           { label:"Tapering",        color:"#34d399", bg:"#032118" };
+/* ============================================================
+   MIGRATION — pivot Marathon → Objectif générique (v2)
+   Les analyses en cache référençaient l'ancien objectif marathon :
+   on les purge une fois pour éviter d'afficher des données obsolètes.
+   ============================================================ */
+const APP_VERSION = 2;
+(function migrate() {
+  const v = parseInt(localStorage.getItem('mc_app_version') || '1', 10);
+  if (v < 2) {
+    ['mc_last_result','mc_weekly_plan','mc_confidence','mc_last_bilan',
+     'mc_week_done_km','mc_volume_history','mc_goal']
+      .forEach(function(k){ localStorage.removeItem(k); });
+    localStorage.setItem('mc_app_version', String(APP_VERSION));
+  }
+})();
+
+/* ============================================================
+   OBJECTIF — modèle générique, éditable à tout moment
+   { type:'trail'|'route'|'autre', name, distanceKm, dplus(m), date(YYYY-MM-DD)|null, targetTime(min)|null }
+   date === null  →  mode REPRISE (pas de compte à rebours ni de phase course)
+   ============================================================ */
+function defaultObjective() {
+  return { type: 'trail', name: '', distanceKm: null, dplus: null, date: null, targetTime: null };
+}
+function loadObjective() {
+  try {
+    const o = JSON.parse(localStorage.getItem('mc_objective') || 'null');
+    return (o && o.type) ? Object.assign(defaultObjective(), o) : defaultObjective();
+  } catch { return defaultObjective(); }
+}
+function saveObjective(o) { localStorage.setItem('mc_objective', JSON.stringify(o)); }
+
+const TYPE_META = {
+  trail: { label: 'Trail',  icon: '🥾', title: 'Prochain trail' },
+  route: { label: 'Route',  icon: '🛣️', title: 'Prochaine course' },
+  autre: { label: 'Objectif', icon: '⚡', title: 'Prochain objectif' },
 };
 
+// Jours restants avant la course (null si pas de date → reprise)
+function objectiveDays(o) {
+  if (!o.date) return null;
+  const race = new Date(o.date + 'T08:00:00');
+  if (isNaN(race.getTime())) return null;
+  return Math.max(0, Math.ceil((race - new Date()) / 86400000));
+}
+function getPhase(d) {
+  if (d > 63) return { label:"Fondamentaux", color:"#60a5fa", bg:"#0d1f3c" };
+  if (d > 35) return { label:"Construction", color:"#a78bfa", bg:"#1a0f35" };
+  if (d > 14) return { label:"Spécifique",   color:"#fbbf24", bg:"#2d1f00" };
+  return           { label:"Affûtage",       color:"#34d399", bg:"#032118" };
+}
+const REPRISE_PHASE = { label:"Reprise", color:"#34d399", bg:"#032118" };
+
+function timeLabel(min) {
+  if (!min || min <= 0) return null;
+  return Math.floor(min/60) + 'h' + String(min%60).padStart(2,'0');
+}
+// Allure dérivée (route uniquement, purement indicative)
+function derivePace(km, min) {
+  if (!km || !min) return null;
+  const s = Math.round(min * 60 / km);
+  return Math.floor(s/60) + "'" + String(s%60).padStart(2,'0') + '"/km';
+}
+function fmtKm(v) { return String(v).replace('.', ','); }
+
+// Trois stats d'en-tête, adaptées au type d'objectif
+function objectiveStats(o) {
+  const dash = 'À définir';
+  const dist = o.distanceKm ? (fmtKm(o.distanceKm) + ' km') : dash;
+  const tm = timeLabel(o.targetTime) || '—';
+  if (o.type === 'route') {
+    return [
+      { label:'Distance',  value:dist, color:'#a78bfa' },
+      { label:'Temps visé',value:tm,   color:'#60a5fa' },
+      { label:'Allure',    value: derivePace(o.distanceKm, o.targetTime) || '—', color:'#34d399' },
+    ];
+  }
+  return [
+    { label:'Distance',  value:dist, color:'#a78bfa' },
+    { label:'D+',        value: o.dplus ? (o.dplus + ' m') : dash, color:'#34d399' },
+    { label:'Temps visé',value:tm,   color:'#60a5fa' },
+  ];
+}
+
+const DAYS_FR = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
+const FULL_DAYS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+const MONTHS_FR = ["jan","fev","mar","avr","mai","juin","juil","aout","sep","oct","nov","dec"];
+
+// Âge d'un cache : heures puis jours
+function formatAge(savedAt) {
+  const h = Math.round((Date.now() - savedAt) / 3600000);
+  if (h < 1) return "moins d'1h";
+  if (h < 48) return h + 'h';
+  return Math.round(h / 24) + ' jours';
+}
+
+// Cache helpers
+function saveCache(result) {
+  localStorage.setItem("mc_last_result", JSON.stringify({ result, savedAt: Date.now() }));
+}
+function loadCache() {
+  try { return JSON.parse(localStorage.getItem("mc_last_result") || "null"); } catch { return null; }
+}
+function saveWeeklyPlan(week) {
+  if (week && week.length) localStorage.setItem("mc_weekly_plan", JSON.stringify(week));
+}
+function loadWeeklyPlan() {
+  try { return JSON.parse(localStorage.getItem("mc_weekly_plan") || "null"); } catch { return null; }
+}
+function saveConfidence(val) {
+  if (val !== undefined && val !== null) localStorage.setItem("mc_confidence", String(val));
+}
+function loadConfidence() {
+  const v = localStorage.getItem("mc_confidence");
+  return v !== null ? parseInt(v) : null;
+}
+function saveBilan(result) {
+  localStorage.setItem("mc_last_bilan", JSON.stringify({ result, savedAt: Date.now() }));
+}
+function loadBilan() {
+  try { return JSON.parse(localStorage.getItem("mc_last_bilan") || "null"); } catch { return null; }
+}
+function saveActivities(list) {
+  if (list && list.length) localStorage.setItem("mc_last_activities", JSON.stringify(list));
+}
+function loadActivities() {
+  try { return JSON.parse(localStorage.getItem("mc_last_activities") || "null"); } catch { return null; }
+}
+function saveVolume(v) {
+  if (v && v.length) localStorage.setItem("mc_volume_history", JSON.stringify(v));
+}
+function loadVolume() {
+  try { return JSON.parse(localStorage.getItem("mc_volume_history") || "null"); } catch { return null; }
+}
+function saveWeekDone(km) {
+  if (km !== undefined && km !== null) localStorage.setItem("mc_week_done_km", String(km));
+}
+function loadWeekDone() {
+  const v = localStorage.getItem("mc_week_done_km");
+  return v !== null ? parseFloat(v) : null;
+}
+
+// Jours écoulés depuis le dernier run (à partir des activités en cache)
+function daysSinceLastRun() {
+  const acts = loadActivities();
+  if (!acts) return null;
+  const lastRun = acts.find(function(a) { return a.run; });
+  if (!lastRun || !lastRun.iso) return null;
+  const d = new Date(lastRun.iso + 'T00:00:00');
+  if (isNaN(d.getTime())) return null;
+  return Math.floor((Date.now() - d.getTime()) / 86400000);
+}
+
+// Prefs helpers
+function loadPrefs() {
+  try { return JSON.parse(localStorage.getItem("mc_prefs") || "null") || { sessions: 4, days: [0, 2, 4, 5] }; }
+  catch { return { sessions: 4, days: [0, 2, 4, 5] }; }
+}
+function savePrefsData(p) {
+  localStorage.setItem("mc_prefs", JSON.stringify(p));
+}
+function getPrefsPrompt(p) {
+  const dayNames = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"];
+  const selected = [...p.days].sort((a,b)=>a-b).map(d => dayNames[d]).join(", ");
+  return "\nPREFERENCES IMPORTANTES - respecter strictement : EXACTEMENT " + p.sessions + " seances de course par semaine (pas plus, pas moins), reparties uniquement sur les jours disponibles : " + (selected || "non precises") + ". Les autres jours : Repos ou cross-training. Le champ week[] contient TOUJOURS exactement 7 entrees (Lun a Dim), jamais moins.";
+}
+
+// Extrait le kilometrage depuis une string type "EF 12km" ou "Tempo 10 km"
+function extractKm(session) {
+  if (!session) return '';
+  const m = session.match(/(\d+(?:[.,]\d+)?)\s*km/i);
+  return m ? m[1] + 'km' : '';
+}
+
+// Normalise une séance course (course + trail) en types colorés (accents ignorés)
+function normalizeRun(s) {
+  if (!s) return null;
+  const sl = s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (/(cote|denivele|grimpe|montee)/.test(sl)) return { label:'Cotes', color:'#34d399' };
+  if (/(fractionn|interval|vma|repet|fartlek)/.test(sl)) return { label:'Fractionne', color:'#f87171' };
+  if (/(tempo|seuil|allure marathon|allure spe|allure trail|resistance)/.test(sl)) return { label:'Tempo', color:'#fbbf24' };
+  if (/(sortie longue|long run|\bsl\b|rando course|rando-course)/.test(sl)) return { label:'Sortie longue', color:'#a78bfa' };
+  if (/(footing|\bef\b|endurance|recup|regen|fond)/.test(sl)) return { label:'Footing', color:'#60a5fa' };
+  return null;
+}
+
+// Overlay helpers
+function showOverlay(el) {
+  const root = document.getElementById('overlay-root');
+  root.innerHTML = '';
+  root.appendChild(el);
+}
+function clearOverlay() {
+  const root = document.getElementById('overlay-root');
+  root.innerHTML = '';
+}
+
+// Dialog commentaire
+function showCommentDialog(onConfirm) {
+  const overlay = document.createElement('div');
+  overlay.className = 'dialog-overlay';
+  overlay.onclick = function(e) { if (e.target === overlay) clearOverlay(); };
+
+  const box = document.createElement('div');
+  box.className = 'dialog-box';
+
+  const title = document.createElement('div');
+  title.className = 'dialog-title';
+  title.textContent = '💬 Ajouter un commentaire';
+  const sub = document.createElement('div');
+  sub.className = 'dialog-sub';
+  sub.textContent = 'Contraintes, fatigue particulière, contexte... Claude en tiendra compte dans l\'analyse.';
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'dialog-textarea';
+  textarea.placeholder = 'Ex : J\'ai mal au mollet gauche depuis hier, grosse semaine de travail...';
+  const savedComment = localStorage.getItem('mc_pending_comment') || '';
+  textarea.value = savedComment;
+
+  const actions = document.createElement('div');
+  actions.className = 'dialog-actions';
+
+  const btnCancel = document.createElement('button');
+  btnCancel.className = 'dialog-btn-cancel';
+  btnCancel.textContent = 'Annuler';
+  btnCancel.onclick = function() { clearOverlay(); };
+
+  const btnOk = document.createElement('button');
+  btnOk.className = 'dialog-btn-ok';
+  btnOk.textContent = '→ Lancer l\'analyse';
+  btnOk.onclick = function() {
+    const val = textarea.value.trim();
+    localStorage.setItem('mc_pending_comment', val);
+    clearOverlay();
+    onConfirm(val);
+  };
+
+  actions.appendChild(btnCancel);
+  actions.appendChild(btnOk);
+  box.appendChild(title);
+  box.appendChild(sub);
+  box.appendChild(textarea);
+  box.appendChild(actions);
+  overlay.appendChild(box);
+  showOverlay(overlay);
+  setTimeout(function() { textarea.focus(); }, 100);
+}
+
+// Dialog confirmation déconnexion
+function showDisconnectConfirm() {
+  const overlay = document.createElement('div');
+  overlay.className = 'dialog-overlay';
+  overlay.onclick = function(e) { if (e.target === overlay) clearOverlay(); };
+
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+
+  const icon = document.createElement('div');
+  icon.className = 'confirm-icon';
+  icon.textContent = '🔌';
+  const title = document.createElement('div');
+  title.className = 'confirm-title';
+  title.textContent = 'Déconnecter Strava ?';
+  const sub = document.createElement('div');
+  sub.className = 'confirm-sub';
+  sub.textContent = 'Ton historique d\'analyse sera effacé. Ton objectif et tes préférences sont conservés.';
+
+  const actions = document.createElement('div');
+  actions.className = 'confirm-actions';
+
+  const btnCancel = document.createElement('button');
+  btnCancel.className = 'confirm-btn-cancel';
+  btnCancel.textContent = 'Annuler';
+  btnCancel.onclick = function() { clearOverlay(); };
+
+  const btnOk = document.createElement('button');
+  btnOk.className = 'confirm-btn-ok';
+  btnOk.textContent = 'Déconnecter';
+  btnOk.onclick = function() {
+    clearOverlay();
+    // mc_objective, mc_prefs et mc_app_version sont conservés (préférences utilisateur)
+    ['mc_auth','mc_last_result','mc_weekly_plan','mc_confidence','mc_pending_comment',
+     'mc_last_bilan','mc_last_activities','mc_volume_history','mc_week_done_km']
+      .forEach(function(k) { localStorage.removeItem(k); });
+    setState({ auth: null, result: null, savedAt: null, view: 'login' });
+  };
+
+  actions.appendChild(btnCancel);
+  actions.appendChild(btnOk);
+  box.appendChild(icon);
+  box.appendChild(title);
+  box.appendChild(sub);
+  box.appendChild(actions);
+  overlay.appendChild(box);
+  showOverlay(overlay);
+}
+
+// State
+const cached = loadCache();
 let state = {
   view: "home",
   loading: false,
   error: null,
-  result: null,
-  activities: [],
+  result: cached ? cached.result : null,
+  savedAt: cached ? cached.savedAt : null,
   auth: JSON.parse(localStorage.getItem("mc_auth") || "null"),
+  lastAction: null,
 };
 
 function setState(patch) { state = { ...state, ...patch }; render(); }
 
+// Auth helpers
 function saveAuth(auth) { localStorage.setItem("mc_auth", JSON.stringify(auth)); state.auth = auth; }
 
 async function getValidToken() {
@@ -55,7 +395,7 @@ async function getValidToken() {
 function connectStrava() {
   const clientId = "259701";
   const redirect = encodeURIComponent(window.location.origin + "/api/auth");
-  window.location.href = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirect}&response_type=code&scope=activity:read_all`;
+  window.location.href = "https://www.strava.com/oauth/authorize?client_id=" + clientId + "&redirect_uri=" + redirect + "&response_type=code&scope=activity:read_all";
 }
 
 function handleOAuthParams() {
@@ -66,154 +406,723 @@ function handleOAuthParams() {
   }
 }
 
-async function analyze(mode, extra = "") {
-  setState({ loading:true, error:null, result:null, view:"loading" });
+// API call — avec commentaire
+function analyzeWithComment(mode, extra) {
+  showCommentDialog(function(comment) {
+    analyze(mode, extra, comment);
+  });
+}
+
+async function analyze(mode, extra, comment) {
+  if (!extra) extra = "";
+  if (!comment) comment = "";
+  setState({ loading:true, error:null, view:"loading", lastAction:{ mode:mode, extra:extra, comment:comment } });
   try {
     const token = await getValidToken();
     if (!token) { setState({ loading:false, view:"login" }); return; }
-    const res = await fetch("/api/analyze", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ access_token:token, mode, extra }) });
+    const prefs = loadPrefs();
+    const prefsPrompt = getPrefsPrompt(prefs);
+    const res = await fetch("/api/analyze", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ access_token:token, mode:mode, extra:extra, prefsPrompt:prefsPrompt, comment:comment, objective:loadObjective() }) });
     const data = await res.json();
     if (!res.ok || !data.result) throw new Error(data.error || "Erreur serveur");
-    setState({ loading:false, result:data.result, activities:data.activities||[], view:"result" });
+
+    // Données communes à tous les modes
+    if (data.activities) saveActivities(data.activities);
+    if (data.volume) saveVolume(data.volume);
+    saveWeekDone(data.weekDoneKm);
+    if (data.result.confidence !== undefined) saveConfidence(data.result.confidence);
+    localStorage.removeItem('mc_pending_comment'); // commentaire consommé
+
+    if (data.result._mode === 'bilan') {
+      saveBilan(data.result);
+      // Isolation d'état : le bilan ne touche JAMAIS state.result ni mc_last_result
+      setState({ loading:false, view:"bilan" });
+    } else {
+      if (data.result.week) saveWeeklyPlan(data.result.week);
+      saveCache(data.result);
+      setState({ loading:false, result:data.result, savedAt:Date.now(), view:"result" });
+    }
   } catch(e) { setState({ loading:false, error:e.message, view:"error" }); }
 }
 
-const css = s => Object.entries(s).map(([k,v])=>`${k.replace(/([A-Z])/g,'-$1').toLowerCase()}:${v}`).join(';');
-function h(tag, attrs, ...children) {
+// UI helpers
+const css = s => Object.entries(s).map(([k,v])=>k.replace(/([A-Z])/g,'-$1').toLowerCase()+':'+v).join(';');
+function h(tag, attrs) {
+  const children = Array.prototype.slice.call(arguments, 2);
   const el = document.createElement(tag);
-  if (attrs) Object.entries(attrs).forEach(([k,v]) => {
+  if (attrs) Object.entries(attrs).forEach(function(e) {
+    const k = e[0], v = e[1];
     if (k==='style' && typeof v==='object') el.style.cssText = css(v);
     else if (k.startsWith('on')) el.addEventListener(k.slice(2).toLowerCase(), v);
     else el.setAttribute(k, v);
   });
-  children.flat().forEach(c => c && el.appendChild(typeof c==='string' ? document.createTextNode(c) : c));
+  children.flat().forEach(function(c) { if (c) el.appendChild(typeof c==='string' ? document.createTextNode(c) : c); });
   return el;
 }
 
+// Donut SVG (fait vs planifié)
+function donutEl(done, planned) {
+  const pct = planned > 0 ? Math.min(100, done / planned * 100) : 0;
+  const r = 18, c = (2 * Math.PI * r).toFixed(1);
+  const off = (c * (1 - pct / 100)).toFixed(1);
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'width:48px;height:48px;flex-shrink:0;';
+  wrap.innerHTML = '<svg width="48" height="48" viewBox="0 0 48 48">' +
+    '<circle cx="24" cy="24" r="18" fill="none" stroke="#1a2035" stroke-width="5"/>' +
+    '<circle cx="24" cy="24" r="18" fill="none" stroke="#7c3aed" stroke-width="5" stroke-linecap="round" stroke-dasharray="' + c + '" stroke-dashoffset="' + off + '" transform="rotate(-90 24 24)"/>' +
+    '<text x="24" y="28" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="800">' + Math.round(pct) + '%</text>' +
+    '</svg>';
+  return wrap;
+}
+
+// Confidence color
+function confidenceColor(v) {
+  if (v >= 75) return '#34d399';
+  if (v >= 50) return '#fbbf24';
+  return '#f87171';
+}
+
+// Header
 function renderHeader() {
-  const days = getDays(), phase = getPhase(days);
-  return h('div', {style:{padding:'20px 18px 16px',borderBottom:'1px solid #111827'}},
-    h('div', {style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'14px'}},
-      h('div', null,
-        h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2.5px',fontWeight:'700',marginBottom:'4px'}}, 'Marathon de Nice'),
-        h('div', {style:{display:'flex',alignItems:'baseline',gap:'8px'}},
+  const o = loadObjective();
+  const days = objectiveDays(o);               // null → reprise
+  const phase = days != null ? getPhase(days) : REPRISE_PHASE;
+  const meta = TYPE_META[o.type] || TYPE_META.autre;
+  const titleLabel = o.name ? o.name : meta.title;
+  const stats = objectiveStats(o);
+
+  const resultData = state.result || (loadCache() ? loadCache().result : null);
+  const next = resultData ? { session: resultData.headline, label: resultData.type, nextDay: resultData.nextDay } : null;
+  const confidence = loadConfidence();
+
+  const openPrefs = function() { setState({ view: 'prefs' }); };
+
+  // Bloc titre + hero (compte à rebours OU état reprise) + badge phase
+  const heroLeft = h('div', { onclick: openPrefs, style:{cursor:'pointer'} },
+    h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2.5px',fontWeight:'700',marginBottom:'4px',display:'flex',alignItems:'center',gap:'6px'}},
+      meta.icon + ' ' + titleLabel,
+      h('span', {style:{color:'#2a3350',fontSize:'11px',fontWeight:'600'}}, '✎')),
+    days != null
+      ? h('div', {style:{display:'flex',alignItems:'baseline',gap:'8px'}},
           h('span', {style:{fontSize:'40px',fontWeight:'900',color:'#fff',letterSpacing:'-2px',lineHeight:'1'}}, String(days)),
-          h('span', {style:{fontSize:'13px',color:'#4b5563',fontWeight:'600'}}, 'jours'))),
-      h('div', {style:{display:'flex',alignItems:'center',gap:'7px',background:phase.bg,borderRadius:'20px',padding:'6px 14px',border:`1px solid ${phase.color}30`}},
-        h('div', {style:{width:'6px',height:'6px',borderRadius:'50%',background:phase.color,boxShadow:`0 0 6px ${phase.color}`}}),
-        h('span', {style:{fontSize:'11px',color:phase.color,fontWeight:'700'}}, phase.label))),
-    h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'7px'}},
-      ...[ ['Distance','42,2 km','#a78bfa'], ['Objectif',"4h00'00",'#60a5fa'], ['Allure',"5'41\"/km",'#34d399'] ].map(([label,value,color]) =>
-        h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:`2px solid ${color}25`,textAlign:'center'}},
-          h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, label),
-          h('div', {style:{fontSize:'12px',fontWeight:'800',color,lineHeight:'1'}}, value)))));
+          h('span', {style:{fontSize:'13px',color:'#4b5563',fontWeight:'600'}}, 'jours'))
+      : h('div', {style:{display:'flex',alignItems:'baseline',gap:'8px'}},
+          h('span', {style:{fontSize:'26px',fontWeight:'900',color:'#34d399',letterSpacing:'-1px',lineHeight:'1.1'}}, 'Reprise'),
+          h('span', {style:{fontSize:'12px',color:'#4b5563',fontWeight:'600'}}, 'du rythme')));
+
+  const badge = h('div', {style:{display:'flex',alignItems:'center',gap:'7px',background:phase.bg,borderRadius:'20px',padding:'6px 14px',border:'1px solid '+phase.color+'30'}},
+    h('div', {style:{width:'6px',height:'6px',borderRadius:'50%',background:phase.color,boxShadow:'0 0 6px '+phase.color}}),
+    h('span', {style:{fontSize:'11px',color:phase.color,fontWeight:'700'}}, phase.label));
+
+  const statCells = stats.map(function(s) {
+    return h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:'2px solid '+s.color+'25',textAlign:'center'}},
+      h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, s.label),
+      h('div', {style:{fontSize:'12px',fontWeight:'800',color:s.color,lineHeight:'1'}}, s.value));
+  });
+
+  return h('div', {style:{padding:'20px 18px 16px',borderBottom:'1px solid #111827',position:'relative'}},
+    h('button', {
+      onclick: openPrefs,
+      style:{position:'absolute',top:'16px',right:'18px',background:'none',border:'none',color:'#3b4560',fontSize:'18px',cursor:'pointer',zIndex:'10',padding:'4px',lineHeight:'1'}
+    }, '⚙️'),
+    h('div', {style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'14px',paddingRight:'28px'}}, heroLeft, badge),
+    h('div', {onclick:openPrefs,style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'7px',marginBottom:(confidence !== null || next) ? '10px' : '0',cursor:'pointer'}}, statCells),
+    // Indice de confiance
+    confidence !== null ? h('div', {style:{display:'flex',alignItems:'center',gap:'10px',background:'#0e1118',borderRadius:'10px',padding:'9px 14px',marginBottom: next ? '10px' : '0',border:'1px solid #1a2035'}},
+      h('div', {style:{flex:'1'}},
+        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, 'Indice de confiance'),
+        h('div', {style:{height:'4px',background:'#1a2035',borderRadius:'2px',overflow:'hidden'}},
+          h('div', {style:{height:'100%',width:confidence+'%',background:confidenceColor(confidence),borderRadius:'2px',transition:'width 0.6s ease'}}))),
+      h('div', {style:{fontSize:'18px',fontWeight:'900',color:confidenceColor(confidence),lineHeight:'1',minWidth:'36px',textAlign:'right'}}, confidence + '/100')) : null,
+    next ? h('div', {
+      onclick: function() {
+        const r = state.result || (loadCache() ? loadCache().result : null);
+        setState({ result: r, view:'result' });
+      },
+      style:{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#0e1118',borderRadius:'10px',padding:'10px 14px',border:'1px solid #1a2035',cursor:'pointer',marginBottom:'6px'}},
+      h('div', null,
+        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, next.nextDay ? 'Prochaine seance · ' + next.nextDay : 'Prochaine seance'),
+        h('div', {style:{fontSize:'13px',fontWeight:'700',color:'#a78bfa'}}, next.label + ' · ' + next.session)),
+      h('span', {style:{color:'#2d3748',fontSize:'16px'}}, '>')) : null,
+    (function() {
+      const b = loadBilan();
+      if (!b) return null;
+      const d = b.result;
+      const verdictColor = { continuer:'#34d399', ameliorer:'#60a5fa', downgrade:'#f87171' };
+      const color = verdictColor[d.verdict] || '#a78bfa';
+      return h('div', {
+        onclick: function() { setState({ view:'bilan' }); },
+        style:{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#0a0d14',borderRadius:'10px',padding:'9px 14px',border:'1px solid #151c2a',cursor:'pointer'}},
+        h('div', null,
+          h('div', {style:{fontSize:'8px',color:'#2d3748',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, 'Bilan · il y a ' + formatAge(b.savedAt)),
+          h('div', {style:{fontSize:'12px',fontWeight:'600',color:color}}, (d.niveau||'') + (d.tendance ? ' · ' + d.tendance : ''))),
+        h('span', {style:{color:'#2d3748',fontSize:'16px'}}, '>'));
+    })()
+  );
 }
 
-function renderLogin() {
-  return h('div', {class:'fade',style:{padding:'40px 18px',textAlign:'center'}},
-    h('div', {style:{fontSize:'40px',marginBottom:'16px'}}, '🏃'),
-    h('div', {style:{fontSize:'20px',fontWeight:'800',color:'#fff',marginBottom:'8px'}}, 'Marathon Coach'),
-    h('div', {style:{fontSize:'13px',color:'#4b5563',marginBottom:'32px',lineHeight:'1.6'}}, 'Connecte ton compte Strava pour des recommandations basées sur tes vraies données.'),
-    h('button', {onclick:connectStrava, style:{width:'100%',padding:'18px',borderRadius:'14px',background:'#FC4C02',color:'#fff',fontSize:'16px',fontWeight:'700'}}, '🚴 Connecter Strava'));
-}
-
+// Views
 function renderHome() {
-  const name = state.auth?.athlete_name || 'Yann';
+  const name = (state.auth && state.auth.athlete_name) ? state.auth.athlete_name : 'Yann';
+  const cache = loadCache();
+  const week = loadWeeklyPlan();
+  const o = loadObjective();
+
   const btns = [
-    {id:'session',icon:'⚡',label:'Ma prochaine séance',sub:'Analyse Strava en temps réel'},
-    {id:'week',icon:'📅',label:'Prochaine semaine',sub:'Programme 7 jours détaillé'},
-    {id:'fatigue',icon:'😮‍💨',label:'Je suis fatigué',sub:'Adapter la charge'},
-    {id:'cross',icon:'🚴',label:'Autre sport fait',sub:'Vélo, natation, rando…'},
+    {id:'session',icon:'⚡',label:'Ma prochaine seance',sub:'Analyse Strava · utilise des tokens'},
+    {id:'week',   icon:'📅',label:'Prochaine semaine',  sub:'Programme 7 jours · utilise des tokens'},
+    {id:'fatigue',icon:'😮',label:'Je suis fatigue',    sub:'Adapter la charge · utilise des tokens'},
+    {id:'cross',  icon:'🚴',label:'Autre sport fait',   sub:'Velo, natation, rando · utilise des tokens'},
+    {id:'bilan',  icon:'🔍',label:'Analyse de situation', sub:'Bilan honnete de ta progression · utilise des tokens'},
   ];
-  return h('div', {class:'fade',style:{padding:'20px 18px'}},
-    h('div', {style:{fontSize:'14px',fontWeight:'700',color:'#e2e8f0',marginBottom:'3px'}}, `Bonjour ${name} 👋`),
-    h('div', {style:{fontSize:'12px',color:'#4b5563',marginBottom:'18px'}}, 'Connecté à Strava · Analyse IA en direct'),
-    ...btns.map(b => h('button', {
-      onclick:()=> b.id==='cross' ? setState({view:'cross'}) : analyze(b.id),
+
+  const children = [
+    h('div', {style:{fontSize:'14px',fontWeight:'700',color:'#e2e8f0',marginBottom:'3px'}}, 'Bonjour ' + name + ' 👋'),
+    !cache ? h('div', {style:{fontSize:'12px',color:'#4b5563',marginBottom:'16px'}}, 'Lance une analyse pour obtenir ta premiere seance.') : null
+  ];
+
+  // Alerte X jours sans course
+  const noRunDays = daysSinceLastRun();
+  if (noRunDays !== null && noRunDays >= 4) {
+    children.push(h('div', {style:{display:'flex',alignItems:'center',gap:'10px',background:'#1a0505',border:'1px solid #f8717130',borderRadius:'12px',padding:'12px 14px',marginTop:'10px',marginBottom:'12px'}},
+      h('span', {style:{fontSize:'18px'}}, '⚠️'),
+      h('div', null,
+        h('div', {style:{fontSize:'13px',fontWeight:'700',color:'#f87171'}}, noRunDays + ' jours sans course'),
+        h('div', {style:{fontSize:'11px',color:'#6b7280'}}, 'Pense a relancer en douceur.'))));
+  } else {
+    children.push(h('div', {style:{marginBottom:'12px'}}));
+  }
+
+  btns.forEach(function(b) {
+    children.push(h('button', {
+      onclick: function() {
+        if (b.id === 'cross') setState({view:'cross'});
+        else analyzeWithComment(b.id);
+      },
       style:{width:'100%',display:'flex',alignItems:'center',gap:'14px',background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'16px',marginBottom:'9px',color:'#e2e8f0',textAlign:'left'}},
       h('span', {style:{width:'42px',height:'42px',borderRadius:'12px',background:'#141824',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'20px',flexShrink:'0'}}, b.icon),
       h('div', {style:{flex:'1'}},
         h('div', {style:{fontSize:'14px',fontWeight:'600',marginBottom:'2px'}}, b.label),
         h('div', {style:{fontSize:'11px',color:'#4b5563'}}, b.sub)),
-      h('span', {style:{color:'#2d3748',fontSize:'18px'}}, '›'))),
-    h('button', {onclick:()=>{localStorage.removeItem('mc_auth');setState({auth:null,view:'login'});}, style:{width:'100%',padding:'12px',background:'transparent',border:'1px dashed #1a2035',borderRadius:'12px',color:'#3b4560',fontSize:'12px',marginTop:'4px'}}, '🔗 Déconnecter Strava'));
+      h('span', {style:{color:'#2d3748',fontSize:'18px'}}, '>')));
+  });
+
+  // Bloc Ma semaine (runs uniquement, séances faites cochées) + donut fait/planifié
+  if (week) {
+    const runs = week.filter(function(w) { return normalizeRun(w.session); });
+    if (runs.length) {
+      const doneKm = loadWeekDone();
+      const plannedKm = runs.reduce(function(s, w) {
+        const km = parseFloat((extractKm(w.session) || '0').replace(',', '.'));
+        return s + (isNaN(km) ? 0 : km);
+      }, 0);
+
+      const cards = runs.map(function(w) {
+        const run = normalizeRun(w.session);
+        const km = w.distance || extractKm(w.session) || '';
+        return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'64px',opacity: w.done ? '0.5' : '1'}},
+          h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'4px',textTransform:'uppercase',fontWeight:'600'}}, w.day + (w.done ? ' ✓' : '')),
+          h('div', {style:{borderRadius:'10px',padding:'8px 6px',background:run.color+'15',border:'1px solid '+run.color+'30',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'3px',minHeight:'66px'}},
+            h('div', {style:{fontSize:'8px',color:run.color,fontWeight:'800',lineHeight:'1.2',textAlign:'center'}}, run.label),
+            km ? h('div', {style:{fontSize:'12px',color:'#e2e8f0',fontWeight:'900',lineHeight:'1',marginTop:'2px'}}, km) : null));
+      });
+
+      children.push(
+        h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px'}},
+          h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontWeight:'700'}}, 'Ma semaine'),
+          (doneKm !== null && plannedKm > 0) ? h('div', {style:{display:'flex',alignItems:'center',gap:'12px',marginBottom:'12px'}},
+            donutEl(doneKm, plannedKm),
+            h('div', null,
+              h('div', {style:{fontSize:'16px',fontWeight:'900',color:'#e2e8f0',lineHeight:'1'}}, doneKm + ' / ' + Math.round(plannedKm) + ' km'),
+              h('div', {style:{fontSize:'10px',color:'#4b5563',marginTop:'4px'}}, 'Volume course · fait vs planifie'))) : null,
+          h.apply(null, ['div', {style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'2px'}}].concat(cards))));
+    }
+  }
+
+  // Graphe volume · 12 semaines — trail : D+ (toutes activités) · sinon : km course
+  const vol = loadVolume();
+  if (vol && vol.length) {
+    const useDplus = o.type === 'trail';
+    const metric = function(v) { return useDplus ? (v.dplus || 0) : (v.km || 0); };
+    const maxV = Math.max.apply(null, vol.map(metric).concat([1]));
+    const curr = vol[vol.length - 1];
+    const bars = vol.map(function(v, i) {
+      const isCurrent = i === vol.length - 1;
+      const val = metric(v);
+      const hPct = val > 0 ? Math.max(6, Math.round(val / maxV * 100)) : 0;
+      return h('div', {style:{flex:'1',display:'flex',flexDirection:'column',justifyContent:'flex-end',height:'64px'}},
+        h('div', {style:{height:hPct+'%',background:isCurrent?'#7c3aed':'#242c42',borderRadius:'3px 3px 0 0',minHeight:val>0?'3px':'2px',opacity:val>0?'1':'0.4'}}));
+    });
+    children.push(
+      h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px'}},
+        h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontWeight:'700'}}, useDplus ? 'D+ cumulé · 12 sem · toutes activités' : 'Volume course · 12 semaines'),
+        h.apply(null, ['div', {style:{display:'flex',gap:'4px',alignItems:'flex-end'}}].concat(bars)),
+        h('div', {style:{display:'flex',justifyContent:'space-between',marginTop:'8px'}},
+          h('span', {style:{fontSize:'9px',color:'#3b4560'}}, 'S-11'),
+          h('span', {style:{fontSize:'9px',color:'#a78bfa',fontWeight:'700'}}, 'Cette semaine · ' + (useDplus ? (Math.round(curr.dplus||0) + ' m D+') : (curr.km + ' km'))))));
+  }
+
+  children.push(h('button', {
+    onclick: function() { showDisconnectConfirm(); },
+    style:{width:'100%',padding:'12px',background:'transparent',border:'1px dashed #1a2035',borderRadius:'12px',color:'#3b4560',fontSize:'12px',marginTop:'4px'}
+  }, 'Deconnecter Strava'));
+
+  return h.apply(null, ['div', {class:'fade',style:{padding:'20px 18px'}}].concat(children));
+}
+
+// Preferences (objectif + séances + jours)
+function renderPrefs() {
+  const prefs = loadPrefs();
+  const obj = loadObjective();
+  var draft = {
+    sessions: prefs.sessions,
+    days: prefs.days.slice(),
+    obj: Object.assign(defaultObjective(), obj),
+  };
+  const DAY_LABELS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
+  const TYPE_BTNS = [{k:'trail',l:'🥾 Trail'},{k:'route',l:'🛣️ Route'},{k:'autre',l:'⚡ Autre'}];
+
+  function makeLabeled(labelText, inputEl) {
+    const wrap = document.createElement('div');
+    const lab = document.createElement('div');
+    lab.className = 'obj-label';
+    lab.textContent = labelText;
+    wrap.appendChild(lab);
+    wrap.appendChild(inputEl);
+    return wrap;
+  }
+
+  function buildUI() {
+    const container = document.getElementById('prefs-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    /* ---- Objectif ---- */
+    const objBlock = document.createElement('div');
+    objBlock.style.cssText = 'background:#0e1118;border:1px solid #1a2035;border-radius:14px;padding:16px;margin-bottom:12px;';
+    const objTitle = document.createElement('div');
+    objTitle.style.cssText = 'font-size:9px;color:#3b4560;text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;font-weight:700;';
+    objTitle.textContent = 'Objectif';
+    objBlock.appendChild(objTitle);
+
+    // Type
+    const typeRow = document.createElement('div');
+    typeRow.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;';
+    TYPE_BTNS.forEach(function(t) {
+      const active = draft.obj.type === t.k;
+      const btn = document.createElement('button');
+      btn.textContent = t.l;
+      btn.style.cssText = 'padding:12px 0;border-radius:10px;border:2px solid '+(active?'#7c3aed':'#1a2035')+';background:'+(active?'#1a0f35':'#0e1118')+';color:'+(active?'#a78bfa':'#4b5563')+';font-size:12px;font-weight:800;cursor:pointer;';
+      btn.onclick = function() { draft.obj.type = t.k; buildUI(); };
+      typeRow.appendChild(btn);
+    });
+    objBlock.appendChild(typeRow);
+
+    // Nom
+    const nameIn = document.createElement('input');
+    nameIn.className = 'obj-input';
+    nameIn.type = 'text';
+    nameIn.placeholder = 'Ex : Trail des Cimes';
+    nameIn.value = draft.obj.name || '';
+    nameIn.oninput = function() { draft.obj.name = nameIn.value; };
+    objBlock.appendChild(makeLabeled('Nom (optionnel)', nameIn));
+
+    // Distance + D+
+    const gridDD = document.createElement('div');
+    gridDD.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;';
+    const distIn = document.createElement('input');
+    distIn.className = 'obj-input';
+    distIn.type = 'number'; distIn.inputMode = 'decimal'; distIn.min = '0'; distIn.step = '1';
+    distIn.placeholder = '35';
+    distIn.value = (draft.obj.distanceKm != null ? draft.obj.distanceKm : '');
+    distIn.oninput = function() { const v = parseFloat(distIn.value); draft.obj.distanceKm = (v > 0 ? v : null); };
+    const dplusIn = document.createElement('input');
+    dplusIn.className = 'obj-input';
+    dplusIn.type = 'number'; dplusIn.inputMode = 'numeric'; dplusIn.min = '0'; dplusIn.step = '50';
+    dplusIn.placeholder = '1500';
+    dplusIn.value = (draft.obj.dplus != null ? draft.obj.dplus : '');
+    dplusIn.oninput = function() { const v = parseInt(dplusIn.value, 10); draft.obj.dplus = (v > 0 ? v : null); };
+    gridDD.appendChild(makeLabeled('Distance (km)', distIn));
+    gridDD.appendChild(makeLabeled('D+ (m)', dplusIn));
+    objBlock.appendChild(gridDD);
+
+    // Date + bouton reprise
+    const dateWrap = document.createElement('div');
+    dateWrap.style.cssText = 'margin-top:12px;';
+    const dateLab = document.createElement('div');
+    dateLab.className = 'obj-label';
+    dateLab.textContent = 'Date de la course';
+    dateWrap.appendChild(dateLab);
+    const dateRow = document.createElement('div');
+    dateRow.style.cssText = 'display:flex;gap:8px;align-items:center;';
+    const dateIn = document.createElement('input');
+    dateIn.className = 'obj-input';
+    dateIn.type = 'date';
+    dateIn.style.flex = '1';
+    dateIn.value = draft.obj.date || '';
+    dateIn.oninput = function() { draft.obj.date = dateIn.value || null; updateSummary(); };
+    const clearDate = document.createElement('button');
+    clearDate.textContent = 'Reprise';
+    clearDate.title = 'Pas encore de date';
+    clearDate.style.cssText = 'padding:12px 14px;border-radius:10px;border:1px solid '+((draft.obj.date)?'#1a2035':'#34d39955')+';background:'+((draft.obj.date)?'#0e1118':'#032118')+';color:'+((draft.obj.date)?'#4b5563':'#34d399')+';font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;';
+    clearDate.onclick = function() { draft.obj.date = null; buildUI(); };
+    dateRow.appendChild(dateIn);
+    dateRow.appendChild(clearDate);
+    dateWrap.appendChild(dateRow);
+    const dateHint = document.createElement('div');
+    dateHint.style.cssText = 'font-size:10px;color:#3b4560;margin-top:6px;';
+    dateHint.textContent = draft.obj.date ? 'Compte à rebours et périodisation activés.' : 'Sans date : mode reprise (pas de compte à rebours).';
+    dateWrap.appendChild(dateHint);
+    objBlock.appendChild(dateWrap);
+
+    // Temps visé (h + min) — indicatif
+    const timeWrap = document.createElement('div');
+    timeWrap.style.cssText = 'margin-top:12px;';
+    const timeLab = document.createElement('div');
+    timeLab.className = 'obj-label';
+    timeLab.textContent = 'Temps visé (indicatif)';
+    timeWrap.appendChild(timeLab);
+    const timeRow = document.createElement('div');
+    timeRow.style.cssText = 'display:flex;gap:8px;align-items:center;';
+    const cur = draft.obj.targetTime || 0;
+    const hIn = document.createElement('input');
+    hIn.className = 'obj-input'; hIn.type = 'number'; hIn.inputMode = 'numeric'; hIn.min = '0'; hIn.max = '23';
+    hIn.placeholder = 'h'; hIn.style.textAlign = 'center';
+    hIn.value = cur ? String(Math.floor(cur/60)) : '';
+    const mIn = document.createElement('input');
+    mIn.className = 'obj-input'; mIn.type = 'number'; mIn.inputMode = 'numeric'; mIn.min = '0'; mIn.max = '59';
+    mIn.placeholder = 'min'; mIn.style.textAlign = 'center';
+    mIn.value = cur ? String(cur%60) : '';
+    function syncTime() {
+      const hh = parseInt(hIn.value, 10) || 0;
+      const mm = parseInt(mIn.value, 10) || 0;
+      const total = hh*60 + mm;
+      draft.obj.targetTime = total > 0 ? total : null;
+      updateSummary();
+    }
+    hIn.oninput = syncTime; mIn.oninput = syncTime;
+    const hLab = document.createElement('span'); hLab.textContent = 'h'; hLab.style.cssText='color:#4b5563;font-size:13px;';
+    const mLab = document.createElement('span'); mLab.textContent = 'min'; mLab.style.cssText='color:#4b5563;font-size:13px;';
+    timeRow.appendChild(hIn); timeRow.appendChild(hLab);
+    timeRow.appendChild(mIn); timeRow.appendChild(mLab);
+    timeWrap.appendChild(timeRow);
+    const timeHint = document.createElement('div');
+    timeHint.style.cssText = 'font-size:10px;color:#3b4560;margin-top:6px;';
+    timeHint.textContent = 'Simple repère — aucun recalcul d\'allure imposé.';
+    timeWrap.appendChild(timeHint);
+    objBlock.appendChild(timeWrap);
+
+    container.appendChild(objBlock);
+
+    /* ---- Séances / semaine ---- */
+    const sessBlock = document.createElement('div');
+    sessBlock.style.cssText = 'background:#0e1118;border:1px solid #1a2035;border-radius:14px;padding:16px;margin-bottom:12px;';
+    const sessTitle = document.createElement('div');
+    sessTitle.style.cssText = 'font-size:9px;color:#3b4560;text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;font-weight:700;';
+    sessTitle.textContent = 'Seances de course / semaine';
+    sessBlock.appendChild(sessTitle);
+    const sessRow = document.createElement('div');
+    sessRow.style.cssText = 'display:flex;gap:10px;';
+    [3, 4, 5].forEach(function(n) {
+      const btn = document.createElement('button');
+      btn.textContent = String(n);
+      const active = draft.sessions === n;
+      btn.style.cssText = 'flex:1;padding:14px;border-radius:10px;border:2px solid '+(active?'#7c3aed':'#1a2035')+';background:'+(active?'#1a0f35':'#0e1118')+';color:'+(active?'#a78bfa':'#4b5563')+';font-size:18px;font-weight:800;cursor:pointer;';
+      btn.onclick = function() { draft.sessions = n; buildUI(); };
+      sessRow.appendChild(btn);
+    });
+    sessBlock.appendChild(sessRow);
+    container.appendChild(sessBlock);
+
+    /* ---- Jours disponibles ---- */
+    const daysBlock = document.createElement('div');
+    daysBlock.style.cssText = 'background:#0e1118;border:1px solid #1a2035;border-radius:14px;padding:16px;margin-bottom:20px;';
+    const daysTitle = document.createElement('div');
+    daysTitle.style.cssText = 'font-size:9px;color:#3b4560;text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;font-weight:700;';
+    daysTitle.textContent = 'Jours disponibles';
+    daysBlock.appendChild(daysTitle);
+    const daysRow = document.createElement('div');
+    daysRow.style.cssText = 'display:grid;grid-template-columns:repeat(7,1fr);gap:6px;';
+    DAY_LABELS.forEach(function(label, i) {
+      const active = draft.days.indexOf(i) >= 0;
+      const btn = document.createElement('button');
+      btn.style.cssText = 'padding:10px 0;border-radius:10px;border:2px solid '+(active?'#7c3aed':'#1a2035')+';background:'+(active?'#1a0f35':'#0e1118')+';color:'+(active?'#a78bfa':'#4b5563')+';font-size:11px;font-weight:700;cursor:pointer;text-align:center;';
+      btn.textContent = label;
+      btn.onclick = function() {
+        const idx = draft.days.indexOf(i);
+        if (idx >= 0) draft.days.splice(idx, 1);
+        else draft.days.push(i);
+        buildUI();
+      };
+      daysRow.appendChild(btn);
+    });
+    daysBlock.appendChild(daysRow);
+    container.appendChild(daysBlock);
+
+    updateSummary();
+  }
+
+  function updateSummary() {
+    const summary = document.getElementById('prefs-summary');
+    if (!summary) return;
+    const dayNames = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"];
+    const sel = draft.days.slice().sort(function(a,b){return a-b;}).map(function(d){return dayNames[d];});
+    const meta = TYPE_META[draft.obj.type] || TYPE_META.autre;
+    const bits = [];
+    if (draft.obj.distanceKm) bits.push(fmtKm(draft.obj.distanceKm) + ' km');
+    if (draft.obj.dplus) bits.push('D+ ' + draft.obj.dplus + ' m');
+    if (draft.obj.targetTime) bits.push(timeLabel(draft.obj.targetTime));
+    bits.push(draft.obj.date ? 'course datée' : 'reprise');
+    summary.textContent = meta.icon + ' ' + meta.label + ' · ' + bits.join(' · ') + ' · ' + draft.sessions + ' séances · ' + (sel.length ? sel.join(', ') : 'aucun jour');
+  }
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'fade';
+  wrapper.style.cssText = 'padding:20px 18px;';
+
+  const nav = document.createElement('div');
+  nav.style.cssText = 'display:flex;align-items:center;gap:12px;margin-bottom:20px;';
+  const backBtn = document.createElement('button');
+  backBtn.textContent = '←';
+  backBtn.style.cssText = 'background:none;border:none;color:#7c3aed;font-size:22px;cursor:pointer;padding:0;line-height:1;';
+  backBtn.onclick = function() { setState({ view: 'home' }); };
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:16px;font-weight:800;color:#e2e8f0;';
+  title.textContent = '⚙️ Objectif & préférences';
+  nav.appendChild(backBtn);
+  nav.appendChild(title);
+  wrapper.appendChild(nav);
+
+  const container = document.createElement('div');
+  container.id = 'prefs-container';
+  wrapper.appendChild(container);
+
+  const summary = document.createElement('div');
+  summary.id = 'prefs-summary';
+  summary.style.cssText = 'font-size:11px;color:#4b5563;text-align:center;margin-bottom:16px;line-height:1.5;';
+  wrapper.appendChild(summary);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = '✓ Sauvegarder';
+  saveBtn.style.cssText = 'width:100%;padding:16px;background:#7c3aed;color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;';
+  saveBtn.onclick = function() {
+    const prev = loadObjective();
+    const next = {
+      type: draft.obj.type,
+      name: (draft.obj.name || '').trim(),
+      distanceKm: draft.obj.distanceKm,
+      dplus: draft.obj.dplus,
+      date: draft.obj.date || null,
+      targetTime: draft.obj.targetTime,
+    };
+    const objChanged = JSON.stringify({t:prev.type,d:prev.distanceKm,e:prev.dplus,da:prev.date,ti:prev.targetTime})
+                    !== JSON.stringify({t:next.type,d:next.distanceKm,e:next.dplus,da:next.date,ti:next.targetTime});
+    savePrefsData({ sessions: draft.sessions, days: draft.days });
+    saveObjective(next);
+    if (objChanged) {
+      // Les analyses en cache sont basées sur l'ancien objectif → on invalide
+      ['mc_last_result','mc_weekly_plan','mc_confidence','mc_last_bilan','mc_week_done_km','mc_volume_history']
+        .forEach(function(k) { localStorage.removeItem(k); });
+      state.result = null;
+      state.savedAt = null;
+      saveBtn.textContent = '✓ Objectif mis à jour · caches effacés';
+    } else {
+      saveBtn.textContent = '✓ Sauvegarde !';
+    }
+    saveBtn.style.background = '#059669';
+    setTimeout(function() { saveBtn.textContent = '✓ Sauvegarder'; saveBtn.style.background = '#7c3aed'; }, 1800);
+  };
+  wrapper.appendChild(saveBtn);
+
+  const info = document.createElement('div');
+  info.style.cssText = 'font-size:11px;color:#2d3748;text-align:center;line-height:1.5;';
+  info.textContent = 'Objectif et préférences sont injectés dans l\'analyse Claude pour personnaliser tes séances.';
+  wrapper.appendChild(info);
+
+  setTimeout(buildUI, 0);
+  return wrapper;
+}
+
+function renderLogin() {
+  return h('div', {class:'fade',style:{padding:'40px 18px',textAlign:'center'}},
+    h('div', {style:{fontSize:'40px',marginBottom:'16px'}}, '🏃'),
+    h('div', {style:{fontSize:'20px',fontWeight:'800',color:'#fff',marginBottom:'8px'}}, 'Coach'),
+    h('div', {style:{fontSize:'13px',color:'#4b5563',marginBottom:'32px',lineHeight:'1.6'}}, 'Connecte ton compte Strava pour des recommandations basees sur tes vraies donnees.'),
+    h('button', {onclick:connectStrava,style:{width:'100%',padding:'18px',borderRadius:'14px',background:'#FC4C02',color:'#fff',fontSize:'16px',fontWeight:'700'}}, '🚴 Connecter Strava'));
 }
 
 function renderLoading() {
   return h('div', {style:{display:'flex',flexDirection:'column',alignItems:'center',gap:'16px',padding:'60px 18px'}},
     h('div', {style:{width:'44px',height:'44px',borderRadius:'50%',border:'3px solid #1a2035',borderTopColor:'#a78bfa',animation:'spin 0.8s linear infinite'}}),
     h('div', {style:{fontSize:'13px',color:'#4b5563'}}, 'Analyse Strava en cours…'),
-    h('div', {style:{fontSize:'11px',color:'#2d3748',marginTop:'4px'}}, 'Connexion à Claude AI'));
+    h('div', {style:{fontSize:'11px',color:'#2d3748',marginTop:'4px'}}, 'Connexion a Claude AI'));
 }
 
 function renderError() {
   return h('div', {class:'fade',style:{padding:'20px 18px'}},
     h('div', {style:{background:'#1a0a0a',borderRadius:'14px',padding:'20px',border:'1px solid #3a1515',marginBottom:'16px'}},
-      h('div', {style:{fontSize:'15px',fontWeight:'700',color:'#f87171',marginBottom:'8px'}}, '❌ Erreur'),
+      h('div', {style:{fontSize:'15px',fontWeight:'700',color:'#f87171',marginBottom:'8px'}}, 'Erreur'),
       h('div', {style:{fontSize:'12px',color:'#6b7280',lineHeight:'1.5',wordBreak:'break-word'}}, state.error)),
-    h('button', {onclick:()=>setState({view:'home',error:null}), style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#e2e8f0',fontSize:'14px',fontWeight:'700'}}, '← Réessayer'));
+    state.lastAction ? h('button', {
+      onclick: function() { analyze(state.lastAction.mode, state.lastAction.extra, state.lastAction.comment); },
+      style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#7c3aed',color:'#fff',fontSize:'14px',fontWeight:'700',marginBottom:'10px'}
+    }, '↻ Reessayer') : null,
+    h('button', {onclick:function(){setState({view:'home',error:null});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#e2e8f0',fontSize:'14px',fontWeight:'700'}}, '← Retour'));
 }
 
 function renderCross() {
-  const opts = [['🚴','Vélo'],['🏊','Natation'],['🥾','Rando'],['⚡','Autre']];
   return h('div', {class:'fade',style:{padding:'20px 18px'}},
     h('div', {style:{fontSize:'14px',fontWeight:'700',color:'#e2e8f0',marginBottom:'4px'}}, '🚴 Quel sport as-tu fait ?'),
-    h('div', {style:{fontSize:'12px',color:'#4b5563',marginBottom:'18px'}}, 'Je vais adapter ta prochaine séance.'),
+    h('div', {style:{fontSize:'12px',color:'#4b5563',marginBottom:'18px'}}, 'Compté dans ta charge · j\'adapte ta prochaine séance.'),
     h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'16px'}},
-      ...opts.map(([icon,label]) => h('button', {onclick:()=>analyze('cross',label), style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}},
-        h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, icon),
-        h('div', {style:{fontSize:'13px',fontWeight:'600'}}, label)))),
-    h('button', {onclick:()=>setState({view:'home'}), style:{width:'100%',padding:'15px',borderRadius:'12px',background:'transparent',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px'}}, '← Retour'));
+      h('button', {onclick:function(){ showCommentDialog(function(c){ analyze('cross','Velo',c); }); },style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '🚴'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Velo')),
+      h('button', {onclick:function(){ showCommentDialog(function(c){ analyze('cross','Natation',c); }); },style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '🏊'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Natation')),
+      h('button', {onclick:function(){ showCommentDialog(function(c){ analyze('cross','Rando',c); }); },style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '🥾'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Rando')),
+      h('button', {onclick:function(){ showCommentDialog(function(c){ analyze('cross','Autre',c); }); },style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '⚡'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Autre'))),
+    h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'transparent',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px'}}, '← Retour'));
 }
 
 function renderResult() {
-  const d = state.result;
+  const cached2 = loadCache();
+  const d = state.result || (cached2 ? cached2.result : null);
   if (!d) return renderHome();
-  const stat = (label,value,color) => h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'13px 12px',borderBottom:`2px solid ${color}35`}},
-    h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, label),
-    h('div', {style:{fontSize:'16px',fontWeight:'800',color,lineHeight:'1'}}, value));
-  const row = (icon,label,val) => h('div', {style:{display:'flex',gap:'10px',marginBottom:'10px',alignItems:'flex-start'}},
-    h('span', {style:{fontSize:'14px',flexShrink:'0',marginTop:'1px'}}, icon),
-    h('div', null,
-      h('span', {style:{fontSize:'8px',color:'#3b4560',fontWeight:'700',textTransform:'uppercase',letterSpacing:'1px'}}, label+' · '),
-      h('span', {style:{fontSize:'12px',color:'#6b7280',lineHeight:'1.5'}}, val)));
-  return h('div', {class:'fade',style:{padding:'20px 18px'}},
+  const cache = loadCache();
+  const o = loadObjective();
+
+  const stat = function(label,value,color) {
+    return h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'13px 12px',borderBottom:'2px solid '+color+'35'}},
+      h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, label),
+      h('div', {style:{fontSize:'16px',fontWeight:'800',color:color,lineHeight:'1'}}, value));
+  };
+
+  const row = function(icon,label,val) {
+    return h('div', {style:{display:'flex',gap:'10px',marginBottom:'10px',alignItems:'flex-start'}},
+      h('span', {style:{fontSize:'14px',flexShrink:'0',marginTop:'1px'}}, icon),
+      h('div', null,
+        h('span', {style:{fontSize:'8px',color:'#3b4560',fontWeight:'700',textTransform:'uppercase',letterSpacing:'1px'}}, label+' · '),
+        h('span', {style:{fontSize:'12px',color:'#6b7280',lineHeight:'1.5'}}, val)));
+  };
+
+  // Stats adaptatives : on n'affiche que ce qui est pertinent/renseigné
+  const has = function(v){ return v && String(v).trim() && String(v).trim() !== '-'; };
+  const statDefs = [];
+  statDefs.push(['Distance', d.distance, '#a78bfa']);
+  if (o.type === 'trail' && has(d.dplus)) statDefs.push(['D+', d.dplus, '#34d399']);
+  if (has(d.duration)) statDefs.push(['Durée', d.duration, '#818cf8']);
+  if (has(d.pace)) statDefs.push(['Allure', d.pace, '#60a5fa']);
+  statDefs.push(['FC cible', d.hr, '#f87171']);
+  statDefs.push(['RPE', d.rpe, '#fbbf24']);
+  const statCells = statDefs.map(function(s){ return stat(s[0], s[1], s[2]); });
+
+  const children = [
+    cache ? h('div', {style:{fontSize:'10px',color:'#2d3748',marginBottom:'10px',textAlign:'right'}}, 'En cache · il y a ' + formatAge(cache.savedAt)) : null,
     h('div', {style:{background:'linear-gradient(135deg,#1a0f35,#0d1a35)',borderRadius:'16px',padding:'20px 18px',marginBottom:'10px',border:'1px solid #2a1f4a'}},
-      h('div', {style:{fontSize:'9px',color:'#4b5563',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'5px',fontWeight:'700'}}, 'Séance recommandée'),
+      h('div', {style:{fontSize:'9px',color:'#4b5563',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'5px',fontWeight:'700'}}, d.nextDay ? 'Seance recommandee · ' + d.nextDay : 'Seance recommandee'),
       h('div', {style:{fontSize:'24px',fontWeight:'900',color:'#fff',letterSpacing:'-0.5px',marginBottom:'3px'}}, d.headline),
       h('div', {style:{fontSize:'13px',color:'#6b7280'}}, d.type)),
-    h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'10px'}},
-      stat('Distance',d.distance,'#a78bfa'), stat('Allure',d.pace,'#60a5fa'),
-      stat('FC cible',d.hr,'#f87171'), stat('RPE',d.rpe,'#fbbf24')),
+    h.apply(null, ['div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'10px'}}].concat(statCells)),
     h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px',borderLeft:'3px solid #fbbf24'}},
-      h('div', {style:{fontSize:'8px',color:'#78520a',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, '💡 Conseil clé'),
+      h('div', {style:{fontSize:'8px',color:'#78520a',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, 'Conseil cle'),
       h('div', {style:{fontSize:'13px',color:'#fbbf24',lineHeight:'1.5'}}, d.tip)),
     h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
-      row('🍌','Avant',d.before), row('💧','Pendant',d.during), row('🥛','Après',d.after), row('👟','Équipement',d.gear)),
-    d.week && h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
+      row('🍌','Avant',d.before), row('💧','Pendant',d.during),
+      row('🥛','Apres',d.after), row('👟','Equipement',d.gear))
+  ];
+
+  if (d.week) {
+    const weekCards = d.week.map(function(w) {
+      return h('div', {style:{opacity: w.done ? '0.5' : '1'}},
+        h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'5px',textTransform:'uppercase',textAlign:'center',fontWeight:'600'}}, w.day + (w.done ? ' ✓' : '')),
+        h('div', {style:{borderRadius:'7px',padding:'6px 2px',background:(w.color||'#374151')+'18',border:'1px solid '+(w.color||'#374151')+'30',fontSize:'9px',color:w.color||'#374151',fontWeight:'700',minHeight:'40px',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:'1.2',textAlign:'center'}}, w.session));
+    });
+    children.push(h.apply(null, ['div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
       h('div', {style:{fontSize:'9px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontWeight:'700'}}, 'Bloc semaine'),
-      h('div', {style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'5px'}},
-        ...d.week.map(w => h('div', null,
-          h('div', {style:{fontSize:'8px',color:'#3b4560',marginBottom:'5px',textTransform:'uppercase',textAlign:'center',fontWeight:'600'}}, w.day),
-          h('div', {style:{borderRadius:'7px',padding:'5px 2px',background:(w.color||'#374151')+'18',border:`1px solid ${(w.color||'#374151')}30`,fontSize:'7px',color:w.color||'#374151',fontWeight:'700',minHeight:'34px',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:'1.2',textAlign:'center'}}, w.session))))),
+      h.apply(null, ['div', {style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'5px'}}].concat(weekCards))
+    ]));
+  }
+
+  children.push(
     h('div', {style:{background:'#080b10',borderRadius:'12px',padding:'14px 16px',marginBottom:'16px',border:'1px dashed #1a2035'}},
-      h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, '🧠 Pourquoi'),
+      h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, 'Pourquoi'),
       h('div', {style:{fontSize:'12px',color:'#4b5563',lineHeight:'1.6'}}, d.why)),
-    h('button', {onclick:()=>setState({view:'home',result:null}), style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px',fontWeight:'600'}}, '← Nouvelle analyse'));
+    h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px',fontWeight:'600'}}, '← Retour')
+  );
+
+  return h.apply(null, ['div', {class:'fade',style:{padding:'20px 18px'}}].concat(children));
 }
 
+function renderBilan() {
+  const cached3 = loadBilan();
+  const d = cached3 ? cached3.result : null;
+  if (!d) return renderHome();
+
+  const verdictConfig = {
+    continuer: { label: 'Objectif tenable',    color: '#34d399', bg: '#032118', icon: '✅' },
+    ameliorer: { label: 'Tu peux viser plus',  color: '#60a5fa', bg: '#0d1f3c', icon: '🚀' },
+    downgrade: { label: 'Objectif à revoir',   color: '#f87171', bg: '#1a0505', icon: '⚠️' },
+  };
+  const verdict = verdictConfig[d.verdict] || verdictConfig.continuer;
+  const conf = d.confidence !== undefined ? d.confidence : null;
+
+  function tag(text, color) {
+    return h('div', {style:{display:'inline-flex',alignItems:'center',background:color+'18',border:'1px solid '+color+'35',borderRadius:'8px',padding:'6px 10px',fontSize:'12px',color:color,fontWeight:'600',lineHeight:'1.3'}}, text);
+  }
+
+  function section(title, items, color) {
+    return h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
+      h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'10px',fontWeight:'700'}}, title),
+      h('div', {style:{display:'flex',flexDirection:'column',gap:'7px'}},
+        ...(items || []).map(function(item) {
+          return h('div', {style:{display:'flex',alignItems:'flex-start',gap:'8px'}},
+            h('div', {style:{width:'6px',height:'6px',borderRadius:'50%',background:color,flexShrink:'0',marginTop:'5px'}}),
+            h('div', {style:{fontSize:'13px',color:'#c4cdd8',lineHeight:'1.4'}}, item));
+        })));
+  }
+
+  const children = [
+    h('div', {style:{fontSize:'10px',color:'#2d3748',marginBottom:'10px',textAlign:'right'}}, 'En cache · il y a ' + formatAge(cached3.savedAt)),
+
+    h('div', {style:{background:'linear-gradient(135deg,#1a0f35,#0d1a35)',borderRadius:'16px',padding:'18px',marginBottom:'10px',border:'1px solid #2a1f4a'}},
+      h('div', {style:{fontSize:'9px',color:'#4b5563',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'10px',fontWeight:'700'}}, 'Situation actuelle'),
+      h('div', {style:{display:'flex',gap:'8px',flexWrap:'wrap'}},
+        tag(d.niveau || '–', '#a78bfa'),
+        tag(d.tendance || '–', '#60a5fa'))),
+
+    section('✅ Points acquis', d.acquis, '#34d399'),
+    section('⚠️ À travailler', d.atravailler, '#fbbf24'),
+    section('🎯 Priorités des 4 prochaines semaines', d.priorites, '#a78bfa'),
+
+    h('div', {style:{background:verdict.bg,borderRadius:'12px',padding:'16px',marginBottom:'10px',border:'1px solid '+verdict.color+'40'}},
+      h('div', {style:{fontSize:'8px',color:verdict.color+'99',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'6px',fontWeight:'700'}}, 'Verdict objectif'),
+      h('div', {style:{fontSize:'14px',fontWeight:'800',color:verdict.color,marginBottom:'8px'}}, verdict.icon + ' ' + verdict.label),
+      h('div', {style:{fontSize:'12px',color:'#6b7280',lineHeight:'1.6'}}, d.verdictDetail)),
+
+    conf !== null ? h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px',display:'flex',alignItems:'center',gap:'12px'}},
+      h('div', {style:{flex:'1'}},
+        h('div', {style:{fontSize:'8px',color:'#3b4560',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'6px',fontWeight:'700'}}, 'Indice de confiance'),
+        h('div', {style:{height:'4px',background:'#1a2035',borderRadius:'2px',overflow:'hidden'}},
+          h('div', {style:{height:'100%',width:conf+'%',background:confidenceColor(conf),borderRadius:'2px'}}))),
+      h('div', {style:{fontSize:'20px',fontWeight:'900',color:confidenceColor(conf),minWidth:'44px',textAlign:'right'}}, conf+'/100')) : null,
+
+    h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#6b7280',fontSize:'13px',fontWeight:'600'}}, '← Retour')
+  ];
+
+  return h.apply(null, ['div', {class:'fade',style:{padding:'20px 18px'}}].concat(children));
+}
+
+// Render
 function render() {
   const app = document.getElementById('app');
   app.innerHTML = '';
-  app.appendChild(renderHeader());
-  const views = { home:renderHome, login:renderLogin, loading:renderLoading, error:renderError, cross:renderCross, result:renderResult };
+  if (state.view !== 'login') app.appendChild(renderHeader());
+  const views = { home:renderHome, login:renderLogin, loading:renderLoading, error:renderError, cross:renderCross, result:renderResult, prefs:renderPrefs, bilan:renderBilan };
   app.appendChild((views[state.view]||renderHome)());
 }
 
+// Init
 handleOAuthParams();
 if (!state.auth) state.view = 'login';
 render();
 </script>
 </body>
 </html>
-
