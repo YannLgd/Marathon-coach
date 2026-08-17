@@ -687,6 +687,8 @@ function renderHome() {
     style:{width:'100%',padding:'12px',background:'transparent',border:'1px dashed #1a2035',borderRadius:'12px',color:'#3b4560',fontSize:'12px',marginTop:'4px'}
   }, 'Deconnecter Strava'));
 
+  children.push(h('div', {style:{textAlign:'center',fontSize:'9px',color:'#1a2035',marginTop:'10px'}}, 'Coach · v' + APP_VERSION));
+
   return h.apply(null, ['div', {class:'fade',style:{padding:'20px 18px'}}].concat(children));
 }
 
