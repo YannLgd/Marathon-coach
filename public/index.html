@@ -139,6 +139,8 @@ function objectiveStats(o) {
 
 const DAYS_FR = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
 const FULL_DAYS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+// Ordre Lun→Dim utilisé par le champ "nextDay" et par week[] côté backend
+const FR_DAY_ORDER = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
 
 // Âge d'un cache : heures puis jours
 function formatAge(savedAt) {
@@ -146,6 +148,21 @@ function formatAge(savedAt) {
   if (h < 1) return "moins d'1h";
   if (h < 48) return h + 'h';
   return Math.round(h / 24) + ' jours';
+}
+
+// Lundi de la semaine en cours, format YYYY-MM-DD (même convention que le backend)
+function getMondayStr() {
+  const now = new Date();
+  const day = now.getDay(); // 0=dim ... 6=sam
+  const diff = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
+  const pad = n => String(n).padStart(2, '0');
+  return monday.getFullYear() + '-' + pad(monday.getMonth() + 1) + '-' + pad(monday.getDate());
+}
+// Index du jour courant dans l'ordre Lun(0)...Dim(6)
+function todayMondayBasedIndex() {
+  const d = new Date().getDay(); // 0=dim...6=sam
+  return d === 0 ? 6 : d - 1;
 }
 
 // Cache helpers
@@ -160,6 +177,13 @@ function saveWeeklyPlan(week) {
 }
 function loadWeeklyPlan() {
   try { return JSON.parse(localStorage.getItem("mc_weekly_plan") || "null"); } catch { return null; }
+}
+// Semaine (lundi) à laquelle correspond le cache mc_last_result / mc_weekly_plan actuel
+function saveWeekStart(weekStart) {
+  if (weekStart) localStorage.setItem("mc_week_start", weekStart);
+}
+function loadWeekStart() {
+  return localStorage.getItem("mc_week_start");
 }
 function saveConfidence(val) {
   if (val !== undefined && val !== null) localStorage.setItem("mc_confidence", String(val));
@@ -203,6 +227,20 @@ function daysSinceLastRun() {
   const d = new Date(lastRun.iso + 'T00:00:00');
   if (isNaN(d.getTime())) return null;
   return Math.floor((Date.now() - d.getTime()) / 86400000);
+}
+
+// Le cache résultat (séance + semaine) est-il encore valable pour "prochaine séance" / "prochaine semaine" ?
+// Valable si : même semaine (même lundi) ET le jour recommandé (nextDay) n'est pas déjà passé.
+function isPlanStillFresh() {
+  const cache = loadCache();
+  if (!cache || !cache.result) return false;
+  const weekStart = loadWeekStart();
+  if (!weekStart || weekStart !== getMondayStr()) return false;
+  const nextDay = cache.result.nextDay;
+  if (!nextDay) return true; // pas de jour précis attaché : on considère le cache valable pour la semaine
+  const idx = FR_DAY_ORDER.indexOf(nextDay);
+  if (idx === -1) return true;
+  return idx >= todayMondayBasedIndex();
 }
 
 // Prefs helpers (séances / semaine + jours disponibles uniquement)
@@ -348,7 +386,7 @@ function showDisconnectConfirm() {
     sub: 'Ton historique d\'analyse sera effacé. Ton objectif et tes préférences sont conservés.',
     okLabel: 'Déconnecter',
     onConfirm: function() {
-      ['mc_auth','mc_last_result','mc_weekly_plan','mc_confidence','mc_pending_comment',
+      ['mc_auth','mc_last_result','mc_weekly_plan','mc_week_start','mc_confidence','mc_pending_comment',
        'mc_last_bilan','mc_last_activities','mc_volume_history','mc_week_done_km']
         .forEach(function(k) { localStorage.removeItem(k); });
       setState({ auth: null, result: null, savedAt: null, view: 'login' });
@@ -358,7 +396,7 @@ function showDisconnectConfirm() {
 
 // Invalidation des analyses liées à l'objectif
 function invalidateObjectiveCaches() {
-  ['mc_last_result','mc_weekly_plan','mc_confidence','mc_last_bilan']
+  ['mc_last_result','mc_weekly_plan','mc_week_start','mc_confidence','mc_last_bilan']
     .forEach(function(k) { localStorage.removeItem(k); });
   state.result = null;
   state.savedAt = null;
@@ -409,6 +447,20 @@ function analyzeWithComment(mode, extra) {
   showCommentDialog(function(comment) { analyze(mode, extra, comment); });
 }
 
+// Point d'entrée des boutons "Ma prochaine seance" et "Prochaine semaine" :
+// si un plan valable pour la semaine en cours existe déjà, on l'affiche directement
+// (aucun appel API => aucun aléa, résultat garanti identique). On ne régénère
+// que si le cache est absent, perimé (autre semaine), ou si le jour recommandé
+// est déjà passé.
+function goToNextSessionOrWeek(mode) {
+  if (isPlanStillFresh()) {
+    const cache = loadCache();
+    setState({ result: cache.result, savedAt: cache.savedAt, view: 'result' });
+    return;
+  }
+  analyzeWithComment(mode);
+}
+
 async function analyze(mode, extra, comment) {
   if (!extra) extra = "";
   if (!comment) comment = "";
@@ -436,6 +488,7 @@ async function analyze(mode, extra, comment) {
       setState({ loading:false, view:"bilan" });
     } else {
       if (data.result.week) saveWeeklyPlan(data.result.week);
+      saveWeekStart(data.weekStart || getMondayStr());
       saveCache(data.result);
       setState({ loading:false, result:data.result, savedAt:Date.now(), view:"result" });
     }
@@ -617,6 +670,7 @@ function renderHome() {
     children.push(h('button', {
       onclick: function() {
         if (b.id === 'cross') setState({view:'cross'});
+        else if (b.id === 'session' || b.id === 'week') goToNextSessionOrWeek(b.id);
         else analyzeWithComment(b.id);
       },
       style:{width:'100%',display:'flex',alignItems:'center',gap:'14px',background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'16px',marginBottom:'9px',color:'#e2e8f0',textAlign:'left'}},
