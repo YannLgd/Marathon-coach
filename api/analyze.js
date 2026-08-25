@@ -122,6 +122,13 @@ export default async function handler(req, res) {
       .reduce((max, a) => Math.max(max, a.distance / 1000), 0);
     const recentLongestRunKmRounded = Math.round(recentLongestRunKm * 10) / 10;
 
+    // Plancher hebdo absolu : même en reprise, on ne descend pas sous ce volume
+    // (Yann a une base établie — semi récent en 1h48 — un plafond trop bas
+    // sous-entraîne plus qu'il ne protège). Le plafond calculé par régime
+    // reste au-dessus si la charge récente le permet.
+    const WEEKLY_FLOOR_KM = 20;
+    const SL_FLOOR_KM = 6;
+
     // Détermine le régime de progressivité et les plafonds correspondants
     let regimeLabel, weeklyCapKm, slCapKm;
     if (daysSinceLastRun === null) {
@@ -150,7 +157,13 @@ export default async function handler(req, res) {
       slCapKm = Math.round(Math.min(slFromVolume, slFromHistory));
     }
 
-    const progressionPrompt = `\nCONTRAINTES DE PROGRESSIVITÉ (impératif, priment sur toute autre logique de planification — objectif de course de blessure non négociable) : ${regimeLabel}. Volume TOTAL de course cette semaine ≤ ${weeklyCapKm} km (somme de toutes les séances de course planifiées, y compris celles déjà faites). Sortie longue individuelle ≤ ${slCapKm} km. Repère : moyenne des 4 dernières semaines complètes = ${recentAvgKm} km/semaine ; plus longue sortie course des 28 derniers jours = ${recentLongestRunKmRounded} km. Ne JAMAIS générer une semaine ou une sortie longue dépassant ces plafonds, même si le calendrier de l'objectif semble le permettre ou l'exiger — dans ce cas, explique le compromis dans "why" plutôt que de dépasser les plafonds. Répartis le volume progressivement sur les séances disponibles plutôt que de le concentrer sur une seule sortie.`;
+    // Application du plancher (ne relève jamais le plafond calculé par régime
+    // au-delà de ce qu'il propose déjà — max() ne fait que remonter les cas
+    // trop bas)
+    weeklyCapKm = Math.max(WEEKLY_FLOOR_KM, weeklyCapKm);
+    slCapKm = Math.max(SL_FLOOR_KM, slCapKm);
+
+    const progressionPrompt = `\nCONTRAINTES DE PROGRESSIVITÉ (impératif, priment sur toute autre logique de planification — objectif de course de blessure non négociable) : ${regimeLabel}. Volume TOTAL de course cette semaine : entre ${WEEKLY_FLOOR_KM} km (plancher, même en reprise) et ${weeklyCapKm} km (plafond du régime actuel) — vise le haut de cette fourchette plutôt que le minimum, sauf si le commentaire de l'athlète ou la charge multi-sports de la semaine indique une fatigue particulière. Sortie longue individuelle : entre ${SL_FLOOR_KM} km et ${slCapKm} km. Repère : moyenne des 4 dernières semaines complètes = ${recentAvgKm} km/semaine ; plus longue sortie course des 28 derniers jours = ${recentLongestRunKmRounded} km. Ne JAMAIS descendre sous le plancher ni dépasser le plafond, même si le calendrier de l'objectif semble exiger plus — dans ce cas, explique le compromis dans "why" plutôt que de dépasser le plafond. Répartis le volume progressivement sur les séances disponibles plutôt que de le concentrer sur une seule sortie.`;
 
     // ---------- Résumé des activités pour le prompt (toutes disciplines) ----------
     const WEEKDAYS_FR = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
@@ -257,7 +270,7 @@ export default async function handler(req, res) {
       weekDoneDplus,
       weekCharge,
       volume,
-      progression: { regimeLabel, weeklyCapKm, slCapKm, daysSinceLastRun, recentAvgKm, recentLongestRunKm: recentLongestRunKmRounded },
+      progression: { regimeLabel, weeklyFloorKm: WEEKLY_FLOOR_KM, weeklyCapKm, slFloorKm: SL_FLOOR_KM, slCapKm, daysSinceLastRun, recentAvgKm, recentLongestRunKm: recentLongestRunKmRounded },
       objective: { type: objType, daysLeft },
       activities: activities.slice(0, 5).map((a) => ({
         date: new Date(a.start_date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }),
