@@ -229,20 +229,6 @@ function daysSinceLastRun() {
   return Math.floor((Date.now() - d.getTime()) / 86400000);
 }
 
-// Le cache résultat (séance + semaine) est-il encore valable pour "prochaine séance" / "prochaine semaine" ?
-// Valable si : même semaine (même lundi) ET le jour recommandé (nextDay) n'est pas déjà passé.
-function isPlanStillFresh() {
-  const cache = loadCache();
-  if (!cache || !cache.result) return false;
-  const weekStart = loadWeekStart();
-  if (!weekStart || weekStart !== getMondayStr()) return false;
-  const nextDay = cache.result.nextDay;
-  if (!nextDay) return true; // pas de jour précis attaché : on considère le cache valable pour la semaine
-  const idx = FR_DAY_ORDER.indexOf(nextDay);
-  if (idx === -1) return true;
-  return idx >= todayMondayBasedIndex();
-}
-
 // Prefs helpers (séances / semaine + jours disponibles uniquement)
 function loadPrefs() {
   try { return JSON.parse(localStorage.getItem("mc_prefs") || "null") || { sessions: 4, days: [0, 2, 4, 5] }; }
@@ -448,18 +434,9 @@ function analyzeWithComment(mode, extra) {
 }
 
 // Point d'entrée des boutons "Ma prochaine seance" et "Prochaine semaine" :
-// si un plan valable pour la semaine en cours existe déjà, on l'affiche directement
-// (aucun appel API => aucun aléa, résultat garanti identique). On ne régénère
-// que si le cache est absent, perimé (autre semaine), ou si le jour recommandé
-// est déjà passé.
-function goToNextSessionOrWeek(mode) {
-  if (isPlanStillFresh()) {
-    const cache = loadCache();
-    setState({ result: cache.result, savedAt: cache.savedAt, view: 'result' });
-    return;
-  }
-  analyzeWithComment(mode);
-}
+// on appelle toujours l'API. Avec temperature:0 côté serveur, une situation
+// identique (aucune nouvelle activité Strava) redonne le même résultat de
+// façon déterministe ; une nouvelle séance loggée fait évoluer la recommandation.
 
 async function analyze(mode, extra, comment) {
   if (!extra) extra = "";
@@ -670,7 +647,6 @@ function renderHome() {
     children.push(h('button', {
       onclick: function() {
         if (b.id === 'cross') setState({view:'cross'});
-        else if (b.id === 'session' || b.id === 'week') goToNextSessionOrWeek(b.id);
         else analyzeWithComment(b.id);
       },
       style:{width:'100%',display:'flex',alignItems:'center',gap:'14px',background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'16px',marginBottom:'9px',color:'#e2e8f0',textAlign:'left'}},
