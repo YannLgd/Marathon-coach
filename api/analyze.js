@@ -102,68 +102,50 @@ export default async function handler(req, res) {
       volume.push({ start: s, km: Math.round(km / 100) / 10, dplus: Math.round(dplus), charge: Math.round(charge) });
     }
 
-    // ---------- Couche de progressivité (prévention blessures) ----------
-    // Jours écoulés depuis la dernière course (basé sur les activités déjà triées par date desc)
+    // ---------- Couche de progressivité (prévention blessures) — SANS plafond dur ----------
+    // Règle unique : +10% max/semaine par rapport à la moyenne récente, quel
+    // que soit le nombre de jours depuis la dernière sortie. Plus de paliers
+    // par régime (21j/14j/7j) qui étaient trop restrictifs (ex: bloquaient
+    // la sortie longue à ~20km même en pleine forme). Un plancher doux ne
+    // s'applique que s'il n'y a AUCUNE donnée récente exploitable — il ne
+    // restreint jamais un athlète qui a un historique.
     const lastRun = activities.find(isRun);
     const daysSinceLastRun = lastRun
       ? Math.floor((todayMidnight - new Date(localDay(lastRun) + "T00:00:00")) / 86400000)
       : null;
 
     // Moyenne des 4 dernières semaines COMPLÈTES (exclut la semaine en cours, encore partielle)
-    const completedWeeks = volume.slice(Math.max(0, volume.length - 5), volume.length - 1); // 4 semaines avant la semaine en cours
+    const completedWeeks = volume.slice(Math.max(0, volume.length - 5), volume.length - 1);
     const recentAvgKm = completedWeeks.length
       ? Math.round((completedWeeks.reduce((s, w) => s + w.km, 0) / completedWeeks.length) * 10) / 10
       : 0;
 
-    // Plus longue sortie course des 28 derniers jours (référence pour plafonner la SL)
+    // Plus longue sortie course des 28 derniers jours (référence pour la progression de la SL)
     const last28 = Math.floor(Date.now() / 1000) - 28 * 86400;
     const recentLongestRunKm = activities
       .filter((a) => isRun(a) && new Date(a.start_date).getTime() / 1000 >= last28)
       .reduce((max, a) => Math.max(max, a.distance / 1000), 0);
     const recentLongestRunKmRounded = Math.round(recentLongestRunKm * 10) / 10;
 
-    // Plancher hebdo absolu : même en reprise, on ne descend pas sous ce volume
-    // (Yann a une base établie — semi récent en 1h48 — un plafond trop bas
-    // sous-entraîne plus qu'il ne protège). Le plafond calculé par régime
-    // reste au-dessus si la charge récente le permet.
-    const WEEKLY_FLOOR_KM = 20;
-    const SL_FLOOR_KM = 6;
+    // Planchers doux — uniquement en l'absence totale de données récentes
+    const WEEKLY_FLOOR_KM = recentAvgKm > 0 ? 0 : 12;
+    const SL_FLOOR_KM = recentLongestRunKmRounded > 0 ? 0 : 5;
 
-    // Détermine le régime de progressivité et les plafonds correspondants
-    let regimeLabel, weeklyCapKm, slCapKm;
-    if (daysSinceLastRun === null) {
-      // Aucun historique de course exploitable sur 12 semaines
-      regimeLabel = "Reprise complète — aucune donnée de course récente";
-      weeklyCapKm = 15;
-      slCapKm = 5;
-    } else if (daysSinceLastRun >= 21) {
-      regimeLabel = `Reprise après coupure longue (${daysSinceLastRun} jours sans course)`;
-      weeklyCapKm = Math.max(10, Math.round(recentAvgKm * 0.4));
-      slCapKm = Math.max(5, Math.round(weeklyCapKm * 0.3));
-    } else if (daysSinceLastRun >= 14) {
-      regimeLabel = `Reprise après coupure (${daysSinceLastRun} jours sans course)`;
-      weeklyCapKm = Math.max(12, Math.round(recentAvgKm * 0.6));
-      slCapKm = Math.max(6, Math.round(weeklyCapKm * 0.3));
-    } else if (daysSinceLastRun >= 7) {
-      regimeLabel = `Reprise légère (${daysSinceLastRun} jours sans course)`;
-      weeklyCapKm = Math.max(10, Math.round(recentAvgKm * 0.85));
-      slCapKm = Math.max(5, Math.round(Math.min(weeklyCapKm * 0.32, (recentLongestRunKmRounded || weeklyCapKm * 0.32) * 1.15)));
-    } else {
-      regimeLabel = "Entraînement continu";
-      // Règle classique des +10% de volume hebdo, SL plafonnée à ~35% du volume ou +20% de la plus longue sortie récente
-      weeklyCapKm = recentAvgKm > 0 ? Math.round(recentAvgKm * 1.10) : 30;
-      const slFromVolume = weeklyCapKm * 0.35;
-      const slFromHistory = recentLongestRunKmRounded > 0 ? recentLongestRunKmRounded * 1.20 : slFromVolume;
-      slCapKm = Math.round(Math.min(slFromVolume, slFromHistory));
-    }
+    let weeklyCapKm = recentAvgKm > 0 ? Math.round(recentAvgKm * 1.10) : 20;
+    let slCapKm = recentLongestRunKmRounded > 0 ? Math.round(recentLongestRunKmRounded * 1.10) : 10;
 
-    // Application du plancher (ne relève jamais le plafond calculé par régime
-    // au-delà de ce qu'il propose déjà — max() ne fait que remonter les cas
-    // trop bas)
     weeklyCapKm = Math.max(WEEKLY_FLOOR_KM, weeklyCapKm);
     slCapKm = Math.max(SL_FLOOR_KM, slCapKm);
 
-    const progressionPrompt = `\nCONTRAINTES DE PROGRESSIVITÉ (impératif, priment sur toute autre logique de planification — objectif de course de blessure non négociable) : ${regimeLabel}. Volume TOTAL de course cette semaine : entre ${WEEKLY_FLOOR_KM} km (plancher, même en reprise) et ${weeklyCapKm} km (plafond du régime actuel) — vise le haut de cette fourchette plutôt que le minimum, sauf si le commentaire de l'athlète ou la charge multi-sports de la semaine indique une fatigue particulière. Sortie longue individuelle : entre ${SL_FLOOR_KM} km et ${slCapKm} km. Repère : moyenne des 4 dernières semaines complètes = ${recentAvgKm} km/semaine ; plus longue sortie course des 28 derniers jours = ${recentLongestRunKmRounded} km. Ne JAMAIS descendre sous le plancher ni dépasser le plafond, même si le calendrier de l'objectif semble exiger plus — dans ce cas, explique le compromis dans "why" plutôt que de dépasser le plafond. Répartis le volume progressivement sur les séances disponibles plutôt que de le concentrer sur une seule sortie.`;
+    const regimeLabel = daysSinceLastRun === null
+      ? "Reprise complète — aucune donnée de course récente"
+      : daysSinceLastRun >= 21
+      ? `Reprise après coupure longue (${daysSinceLastRun} jours sans course) — règle standard +10% appliquée à la dernière base connue`
+      : daysSinceLastRun >= 7
+      ? `Reprise légère (${daysSinceLastRun} jours sans course)`
+      : "Entraînement continu";
+
+    const progressionPrompt = `\nPROGRESSIVITÉ (cible avec marge, PAS un plafond strict) : ${regimeLabel}. Volume TOTAL de course cette semaine : viser environ ${weeklyCapKm} km (soit +10% par rapport à la moyenne récente de ${recentAvgKm} km/semaine sur les 4 dernières semaines complètes), avec une marge de ±15% possible selon le ressenti de l'athlète et la charge multi-sports de la semaine. Sortie longue individuelle : viser environ ${slCapKm} km (soit +10% par rapport à la plus longue sortie course des 28 derniers jours, ${recentLongestRunKmRounded} km). Tu peux dépasser légèrement cette cible si Yann est en forme, sans traumatisme récent et que la progression vers l'objectif le justifie — explique alors le raisonnement dans "why". À l'inverse, si le commentaire de l'athlète ou la charge de la semaine indique une fatigue particulière, reste prudent. Répartis le volume progressivement sur les séances disponibles plutôt que de le concentrer sur une seule sortie.`;
 
     // ---------- Résumé des activités pour le prompt (toutes disciplines) ----------
     const WEEKDAYS_FR = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
@@ -217,7 +199,7 @@ export default async function handler(req, res) {
     const baseIdentity = `Tu es un coach de course à pied et de trail expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : Yann · 73 kg · Nice · reprend la course après une coupure (bloc vélo/marche/nage), semi récent en 1h48.`;
 
     const systemPrompt = isBilan
-      ? `${baseIdentity} ${objDesc}.${trailGuidance}${repriseGuidance}${chargePrompt}${progressionPrompt}${commentPrompt} Sois honnête et précis, ne surestime pas le niveau. Tiens compte des contraintes de progressivité ci-dessus dans "atravailler" et "priorites" si le rythme actuel les met en risque. Schéma JSON : ${schema} — "confidence" est un entier 0-100 représentant ${confidenceDef}. "verdict" est exactement l'une des trois valeurs : "continuer", "ameliorer" ou "downgrade". "acquis", "atravailler" et "priorites" sont des tableaux de 3 strings courtes.`
+      ? `${baseIdentity} ${objDesc}.${trailGuidance}${repriseGuidance}${chargePrompt}${progressionPrompt}${commentPrompt} Sois honnête et précis, ne surestime pas le niveau. Tiens compte des repères de progressivité ci-dessus dans "atravailler" et "priorites" si le rythme actuel les met en risque. Schéma JSON : ${schema} — "confidence" est un entier 0-100 représentant ${confidenceDef}. "verdict" est exactement l'une des trois valeurs : "continuer", "ameliorer" ou "downgrade". "acquis", "atravailler" et "priorites" sont des tableaux de 3 strings courtes.`
       : `${baseIdentity} ${objDesc}.${trailGuidance}${repriseGuidance}${chargePrompt}${progressionPrompt}${prefsPrompt || ""}${runsWeekPrompt}${commentPrompt} Schéma JSON : ${schema} — Le champ "confidence" est un entier entre 0 et 100 représentant ${confidenceDef}. Le champ "nextDay" est le jour de la semaine en français (ex: "Lundi", "Mardi"...) où doit avoir lieu la prochaine séance.${weekRules}`;
 
     const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
