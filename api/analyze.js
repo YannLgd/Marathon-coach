@@ -19,7 +19,7 @@ export default async function handler(req, res) {
 
     // ---------- Objectif générique (éditable, date optionnelle = mode reprise) ----------
     const obj = objective || {};
-    const objType = ["trail", "route", "autre"].includes(obj.type) ? obj.type : "trail";
+    const objType = ["trail", "route", "autre"].includes(obj.type) ? obj.type : "route";
     const typeLabelMap = { trail: "trail", route: "course sur route", autre: "objectif" };
     const objTypeLabel = typeLabelMap[objType];
     const distanceKm = Number(obj.distanceKm) > 0 ? Number(obj.distanceKm) : null;
