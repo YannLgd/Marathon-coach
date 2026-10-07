@@ -57,7 +57,7 @@ export default async function handler(req, res) {
 
     // Guidance reprise (pas de date fixée)
     const repriseGuidance = daysLeft === null
-      ? ` PHASE DE REPRISE : Yann reprend la course après une coupure (bloc vélo / marche / nage lié à la chaleur). Volumes modérés, intensité progressive, aucune séance traumatisante d'emblée ; priorité au ré-ancrage de l'habitude et à la base aérobie avant de spécifier vers le trail.`
+      ? ` SANS DATE FIXÉE : volumes progressifs, priorité à la régularité et à la base aérobie avant de spécifier vers le trail.`
       : "";
 
     // ---------- Strava : 12 semaines d'historique ----------
@@ -71,7 +71,7 @@ export default async function handler(req, res) {
     if (!Array.isArray(activitiesRaw)) return res.status(502).json({ error: "Réponse Strava invalide" });
     const activities = activitiesRaw.slice().sort((a, b) => new Date(b.start_date) - new Date(a.start_date));
 
-    const isRun = (a) => a.type === "Run" || a.type === "TrailRun" || a.sport_type === "Run" || a.sport_type === "TrailRun";
+    const isRun = (a) => ["Run", "TrailRun", "VirtualRun"].some((t) => a.type === t || a.sport_type === t);
     const localDay = (a) => (a.start_date_local || a.start_date || "").slice(0, 10);
     const elevOf = (a) => a.total_elevation_gain || 0;
     const effortOf = (a) => a.suffer_score || 0;
@@ -102,13 +102,7 @@ export default async function handler(req, res) {
       volume.push({ start: s, km: Math.round(km / 100) / 10, dplus: Math.round(dplus), charge: Math.round(charge) });
     }
 
-    // ---------- Couche de progressivité (prévention blessures) — SANS plafond dur ----------
-    // Règle unique : +10% max/semaine par rapport à la moyenne récente, quel
-    // que soit le nombre de jours depuis la dernière sortie. Plus de paliers
-    // par régime (21j/14j/7j) qui étaient trop restrictifs (ex: bloquaient
-    // la sortie longue à ~20km même en pleine forme). Un plancher doux ne
-    // s'applique que s'il n'y a AUCUNE donnée récente exploitable — il ne
-    // restreint jamais un athlète qui a un historique.
+    // ---------- Repères de progressivité (informatifs, SANS plafond ni plancher) ----------
     const lastRun = activities.find(isRun);
     const daysSinceLastRun = lastRun
       ? Math.floor((todayMidnight - new Date(localDay(lastRun) + "T00:00:00")) / 86400000)
@@ -120,32 +114,18 @@ export default async function handler(req, res) {
       ? Math.round((completedWeeks.reduce((s, w) => s + w.km, 0) / completedWeeks.length) * 10) / 10
       : 0;
 
-    // Plus longue sortie course des 28 derniers jours (référence pour la progression de la SL)
+    // Plus longue sortie course des 28 derniers jours
     const last28 = Math.floor(Date.now() / 1000) - 28 * 86400;
     const recentLongestRunKm = activities
       .filter((a) => isRun(a) && new Date(a.start_date).getTime() / 1000 >= last28)
       .reduce((max, a) => Math.max(max, a.distance / 1000), 0);
     const recentLongestRunKmRounded = Math.round(recentLongestRunKm * 10) / 10;
 
-    // Planchers doux — uniquement en l'absence totale de données récentes
-    const WEEKLY_FLOOR_KM = recentAvgKm > 0 ? 0 : 12;
-    const SL_FLOOR_KM = recentLongestRunKmRounded > 0 ? 0 : 5;
+    const progressionPrompt = `\nPROGRESSIVITÉ : le programme doit rester progressif et cohérent avec la base actuelle de Yann (moyenne récente ${recentAvgKm} km/semaine sur les 4 dernières semaines complètes, plus longue sortie des 28 derniers jours ${recentLongestRunKmRounded} km, ${daysSinceLastRun === null ? "aucune course récente" : daysSinceLastRun + " jour(s) depuis la dernière course"}). Ce sont des repères, pas des limites : n'applique aucun plafond chiffré ni pourcentage d'augmentation imposé. Ne parle JAMAIS de limites, de plafonds, de règle des +10 % ou de seuils de progressivité dans ta réponse (ni dans "why", ni dans les conseils), sauf si Yann le demande ou en cas de signe clair de fatigue ou de blessure dans son commentaire.`;
 
-    let weeklyCapKm = recentAvgKm > 0 ? Math.round(recentAvgKm * 1.10) : 20;
-    let slCapKm = recentLongestRunKmRounded > 0 ? Math.round(recentLongestRunKmRounded * 1.10) : 10;
-
-    weeklyCapKm = Math.max(WEEKLY_FLOOR_KM, weeklyCapKm);
-    slCapKm = Math.max(SL_FLOOR_KM, slCapKm);
-
-    const regimeLabel = daysSinceLastRun === null
-      ? "Reprise complète — aucune donnée de course récente"
-      : daysSinceLastRun >= 21
-      ? `Reprise après coupure longue (${daysSinceLastRun} jours sans course) — règle standard +10% appliquée à la dernière base connue`
-      : daysSinceLastRun >= 7
-      ? `Reprise légère (${daysSinceLastRun} jours sans course)`
-      : "Entraînement continu";
-
-    const progressionPrompt = `\nPROGRESSIVITÉ (cible avec marge, PAS un plafond strict) : ${regimeLabel}. Volume TOTAL de course cette semaine : viser environ ${weeklyCapKm} km (soit +10% par rapport à la moyenne récente de ${recentAvgKm} km/semaine sur les 4 dernières semaines complètes), avec une marge de ±15% possible selon le ressenti de l'athlète et la charge multi-sports de la semaine. Sortie longue individuelle : viser environ ${slCapKm} km (soit +10% par rapport à la plus longue sortie course des 28 derniers jours, ${recentLongestRunKmRounded} km). Tu peux dépasser légèrement cette cible si Yann est en forme, sans traumatisme récent et que la progression vers l'objectif le justifie — explique alors le raisonnement dans "why". À l'inverse, si le commentaire de l'athlète ou la charge de la semaine indique une fatigue particulière, reste prudent. Répartis le volume progressivement sur les séances disponibles plutôt que de le concentrer sur une seule sortie.`;
+    // Historique hebdo (12 semaines) fourni à Claude, identique pour tous les modes
+    const historyPrompt = `\nHISTORIQUE 12 SEMAINES (lundi de la semaine · km course · D+ toutes activités · charge) :\n` +
+      volume.map((w) => `- ${w.start} · ${w.km} km · D+ ${w.dplus} m · charge ${w.charge}`).join("\n");
 
     // ---------- Résumé des activités pour le prompt (toutes disciplines) ----------
     const WEEKDAYS_FR = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
@@ -186,9 +166,9 @@ export default async function handler(req, res) {
 
     const isBilan = mode === "bilan";
 
-    const confidenceDef = daysLeft !== null
-      ? `ta confiance dans l'atteinte de l'objectif compte tenu de la progression actuelle`
-      : `ta confiance dans le bon déroulé de la reprise et la trajectoire vers un « gros » trail`;
+    const confidenceRule = daysLeft !== null
+      ? `INDICE DE CONFIANCE ("confidence", entier 0-100) : probabilité que Yann atteigne l'objectif LE JOUR J (${raceFr}, dans ${daysLeft} jours), et non sa capacité à le réaliser aujourd'hui. Projette la progression réaliste d'ici cette date : compare la base actuelle (volume et sortie longue, D+ si objectif trail, régularité sur les 12 dernières semaines) à ce que demande l'objectif, au regard du temps restant pour combler l'écart. Plus il reste de temps, plus la marge de progression est grande : ne pénalise pas un écart actuel s'il est comblable d'ici la date ; pénalise seulement un écart que ce temps ne permettrait pas de combler à un rythme raisonnable, ou une irrégularité marquée. Applique exactement ce même raisonnement quel que soit le mode demandé (séance, semaine, fatigue, autre sport, bilan) : l'indice ne doit varier qu'avec les données Strava, la date ou l'objectif, pas avec le type d'analyse ni avec une fatigue ponctuelle.`
+      : `INDICE DE CONFIANCE ("confidence", entier 0-100) : confiance dans le bon déroulé de la reprise et la trajectoire vers un « gros » trail, évaluée sur la tendance des 12 dernières semaines. Applique exactement ce même raisonnement quel que soit le mode demandé (séance, semaine, fatigue, autre sport, bilan).`;
 
     const schema = isBilan
       ? `{"niveau":"string (ex: Intermédiaire, Bon, En reprise)","tendance":"string (ex: En progression, Stable, En baisse)","acquis":["string","string","string"],"atravailler":["string","string","string"],"priorites":["string","string","string"],"verdict":"continuer"|"ameliorer"|"downgrade","verdictDetail":"string (2-3 phrases honnêtes sur l'objectif ${objTypeLabel})","confidence":75}`
@@ -196,11 +176,11 @@ export default async function handler(req, res) {
 
     const weekRules = ` RÈGLES week[] : contient TOUJOURS EXACTEMENT 7 entrées, dans l'ordre Lun, Mar, Mer, Jeu, Ven, Sam, Dim (semaine en cours, du lundi ${mondayStr} au dimanche). Chaque entrée a "day", "session", "color", "done". Jours sans course : "session":"Repos" (ou le cross-training prévu : vélo, rando…), "color":"#374151", "done":false. "done":true UNIQUEMENT pour les séances déjà réalisées cette semaine. Couleurs des séances : Footing/EF/Récup "#60a5fa" · Tempo/Seuil "#fbbf24" · Fractionné/VMA "#f87171" · Séance de côtes/dénivelé "#34d399" · Sortie longue/rando-course "#a78bfa".`;
 
-    const baseIdentity = `Tu es un coach de course à pied et de trail expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : Yann · 73 kg · Nice · reprend la course après une coupure (bloc vélo/marche/nage), semi récent en 1h48.`;
+    const baseIdentity = `Tu es un coach de course à pied et de trail expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : Yann · 73 kg · Nice · semi récent en 1h48 · actuellement en cycle centré sur la course à pied, avec du vélo, de la natation et de la musculation en complément occasionnel.`;
 
     const systemPrompt = isBilan
-      ? `${baseIdentity} ${objDesc}.${trailGuidance}${repriseGuidance}${chargePrompt}${progressionPrompt}${commentPrompt} Sois honnête et précis, ne surestime pas le niveau. Tiens compte des repères de progressivité ci-dessus dans "atravailler" et "priorites" si le rythme actuel les met en risque. Schéma JSON : ${schema} — "confidence" est un entier 0-100 représentant ${confidenceDef}. "verdict" est exactement l'une des trois valeurs : "continuer", "ameliorer" ou "downgrade". "acquis", "atravailler" et "priorites" sont des tableaux de 3 strings courtes.`
-      : `${baseIdentity} ${objDesc}.${trailGuidance}${repriseGuidance}${chargePrompt}${progressionPrompt}${prefsPrompt || ""}${runsWeekPrompt}${commentPrompt} Schéma JSON : ${schema} — Le champ "confidence" est un entier entre 0 et 100 représentant ${confidenceDef}. Le champ "nextDay" est le jour de la semaine en français (ex: "Lundi", "Mardi"...) où doit avoir lieu la prochaine séance.${weekRules}`;
+      ? `${baseIdentity} ${objDesc}.${trailGuidance}${repriseGuidance}${chargePrompt}${historyPrompt}${progressionPrompt}${commentPrompt} Sois honnête et précis, ne surestime pas le niveau actuel (cela ne change pas la règle de l'indice de confiance ci-dessous). ${confidenceRule} Schéma JSON : ${schema}. "verdict" est exactement l'une des trois valeurs : "continuer", "ameliorer" ou "downgrade". "acquis", "atravailler" et "priorites" sont des tableaux de 3 strings courtes.`
+      : `${baseIdentity} ${objDesc}.${trailGuidance}${repriseGuidance}${chargePrompt}${historyPrompt}${progressionPrompt}${prefsPrompt || ""}${runsWeekPrompt}${commentPrompt} ${confidenceRule} Schéma JSON : ${schema} — Le champ "nextDay" est le jour de la semaine en français (ex: "Lundi", "Mardi"...) où doit avoir lieu la prochaine séance.${weekRules}`;
 
     const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -252,7 +232,7 @@ export default async function handler(req, res) {
       weekDoneDplus,
       weekCharge,
       volume,
-      progression: { regimeLabel, weeklyFloorKm: WEEKLY_FLOOR_KM, weeklyCapKm, slFloorKm: SL_FLOOR_KM, slCapKm, daysSinceLastRun, recentAvgKm, recentLongestRunKm: recentLongestRunKmRounded },
+      progression: { daysSinceLastRun, recentAvgKm, recentLongestRunKm: recentLongestRunKmRounded },
       objective: { type: objType, daysLeft },
       activities: activities.slice(0, 5).map((a) => ({
         date: new Date(a.start_date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }),
