@@ -67,10 +67,10 @@
 <div id="overlay-root"></div>
 <script>
 /* ============================================================
-   MIGRATION (v3) — l'app n'est plus liée au Marathon de Nice.
+   MIGRATION (v3) : l'app n'est plus liée au Marathon de Nice.
    On purge les caches et l'ancien objectif chrono marathon.
    ============================================================ */
-const APP_VERSION = 4;
+const APP_VERSION = 5;
 (function migrate() {
   const v = parseInt(localStorage.getItem('mc_app_version') || '1', 10);
   if (v < 3) {
@@ -82,7 +82,7 @@ const APP_VERSION = 4;
 })();
 
 /* ============================================================
-   OBJECTIF — optionnel.
+   OBJECTIF : optionnel.
    null  → mode « Entraînement libre » (progression continue)
    objet → { name, date|null, distanceKm|null, dplus|null, targetTime|null }
    ============================================================ */
@@ -129,7 +129,7 @@ function isTrailObjective(o) { return !!(o && o.dplus > 0); }
 
 // Trois stats d'en-tête pour un objectif
 function objectiveStats(o) {
-  const dash = '—';
+  const dash = '-';
   return [
     { label:'Distance',   value: o.distanceKm ? (fmtKm(o.distanceKm) + ' km') : dash, color:'#a78bfa' },
     { label:'D+',         value: o.dplus ? (o.dplus + ' m') : dash,                   color:'#34d399' },
@@ -229,7 +229,7 @@ function daysSinceLastRun() {
   return Math.floor((Date.now() - d.getTime()) / 86400000);
 }
 
-// Prefs helpers (séances / semaine + jours disponibles uniquement)
+// Prefs helpers (séances max / semaine + jours disponibles uniquement)
 function loadPrefs() {
   try { return JSON.parse(localStorage.getItem("mc_prefs") || "null") || { sessions: 4, days: [0, 2, 4, 5] }; }
   catch { return { sessions: 4, days: [0, 2, 4, 5] }; }
@@ -237,10 +237,11 @@ function loadPrefs() {
 function savePrefsData(p) {
   localStorage.setItem("mc_prefs", JSON.stringify(p));
 }
+// Le nombre de séances est un MAXIMUM (disponibilité), jamais une cible à atteindre
 function getPrefsPrompt(p) {
   const dayNames = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"];
   const selected = [...p.days].sort((a,b)=>a-b).map(d => dayNames[d]).join(", ");
-  return "\nPREFERENCES IMPORTANTES - respecter strictement : EXACTEMENT " + p.sessions + " seances de course par semaine (pas plus, pas moins), reparties uniquement sur les jours disponibles : " + (selected || "non precises") + ". Les autres jours : Repos ou cross-training. Le champ week[] contient TOUJOURS exactement 7 entrees (Lun a Dim), jamais moins.";
+  return "\nPREFERENCES (disponibilite de Yann) : il peut courir AU MAXIMUM " + p.sessions + " fois par semaine, uniquement sur les jours disponibles : " + (selected || "non precises") + ". " + p.sessions + " est un PLAFOND de disponibilite, PAS un objectif a atteindre. Construis le meilleur programme possible dans cette limite : choisis le nombre de seances de course optimal (de 0 a " + p.sessions + ") selon la charge recente, la recuperation, le volume deja realise cette semaine, la fatigue et l'objectif. N'ajoute JAMAIS une seance uniquement pour atteindre " + p.sessions + " : proposer moins est normal si c'est plus pertinent. Les autres jours : Repos ou cross-training. Le champ week[] contient TOUJOURS exactement 7 entrees (Lun a Dim), jamais moins.";
 }
 
 // Extrait le kilometrage depuis "EF 12km"
@@ -447,7 +448,7 @@ async function analyze(mode, extra, comment) {
     if (!token) { setState({ loading:false, view:"login" }); return; }
     const prefs = loadPrefs();
     const prefsPrompt = getPrefsPrompt(prefs);
-    const res = await fetch("/api/analyze", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ access_token:token, mode:mode, extra:extra, prefsPrompt:prefsPrompt, comment:comment, objective:loadObjective() }) });
+    const res = await fetch("/api/analyze", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ access_token:token, mode:mode, extra:extra, prefsPrompt:prefsPrompt, maxSessions:prefs.sessions, comment:comment, objective:loadObjective() }) });
     const data = await res.json();
     if (!res.ok || !data.result) throw new Error(data.error || "Erreur serveur");
 
@@ -657,7 +658,7 @@ function renderHome() {
       h('span', {style:{color:'#7a889f',fontSize:'18px'}}, '>')));
   });
 
-  // Bloc Ma semaine — inchangé, disponible dans les deux modes
+  // Bloc Ma semaine : inchangé, disponible dans les deux modes
   if (week) {
     const runs = week.filter(function(w) { return normalizeRun(w.session); });
     if (runs.length) {
@@ -843,7 +844,7 @@ function renderObjective() {
   timeWrap.appendChild(timeRow);
   const timeHint = document.createElement('div');
   timeHint.style.cssText = 'font-size:10px;color:#8b9ab3;margin-top:6px;';
-  timeHint.textContent = 'Simple repère — aucune allure n\'est imposée.';
+  timeHint.textContent = 'Simple repère, aucune allure n\'est imposée.';
   timeWrap.appendChild(timeHint);
   block.appendChild(timeWrap);
 
@@ -905,7 +906,7 @@ function renderObjective() {
   return wrapper;
 }
 
-/* ---------------- Préférences (séances + jours uniquement) ---------------- */
+/* ---------------- Préférences (séances max + jours uniquement) ---------------- */
 function renderPrefs() {
   const prefs = loadPrefs();
   var draft = { sessions: prefs.sessions, days: prefs.days.slice() };
@@ -916,13 +917,17 @@ function renderPrefs() {
     if (!container) return;
     container.innerHTML = '';
 
-    // Séances / semaine
+    // Séances max / semaine
     const sessBlock = document.createElement('div');
     sessBlock.style.cssText = 'background:#0e1118;border:1px solid #1a2035;border-radius:14px;padding:16px;margin-bottom:12px;';
     const sessTitle = document.createElement('div');
-    sessTitle.style.cssText = 'font-size:9px;color:#8b9ab3;text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;font-weight:700;';
-    sessTitle.textContent = 'Seances de course / semaine';
+    sessTitle.style.cssText = 'font-size:9px;color:#8b9ab3;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;font-weight:700;';
+    sessTitle.textContent = 'Seances de course max / semaine';
     sessBlock.appendChild(sessTitle);
+    const sessHint = document.createElement('div');
+    sessHint.style.cssText = 'font-size:11px;color:#a3afc2;line-height:1.5;margin-bottom:12px;';
+    sessHint.textContent = 'Le nombre que tu peux faire au maximum. Le coach propose jusqu\'à ce nombre, et moins si c\'est plus pertinent.';
+    sessBlock.appendChild(sessHint);
     const sessRow = document.createElement('div');
     sessRow.style.cssText = 'display:flex;gap:10px;';
     [3, 4, 5].forEach(function(n) {
@@ -965,7 +970,7 @@ function renderPrefs() {
     if (summary) {
       const dayNames = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"];
       const sel = draft.days.slice().sort(function(a,b){return a-b;}).map(function(d){return dayNames[d];});
-      summary.textContent = draft.sessions + ' séances · ' + (sel.length ? sel.join(', ') : 'aucun jour sélectionné');
+      summary.textContent = 'Jusqu\'à ' + draft.sessions + ' séances · ' + (sel.length ? sel.join(', ') : 'aucun jour sélectionné');
     }
   }
 
@@ -1026,8 +1031,8 @@ function renderLogin() {
 function renderLoading() {
   return h('div', {style:{display:'flex',flexDirection:'column',alignItems:'center',gap:'16px',padding:'60px 18px'}},
     h('div', {style:{width:'44px',height:'44px',borderRadius:'50%',border:'3px solid #1a2035',borderTopColor:'#a78bfa',animation:'spin 0.8s linear infinite'}}),
-    h('div', {style:{fontSize:'13px',color:'#a3afc2'}}, 'Analyse Strava en cours…'),
-    h('div', {style:{fontSize:'11px',color:'#7a889f',marginTop:'4px'}}, 'Connexion a Claude AI'));
+    h('div', {style:{fontSize:'13px',color:'#a3afc2'}}, 'Analyse détaillée de tes séances…'),
+    h('div', {style:{fontSize:'11px',color:'#7a889f',marginTop:'4px',textAlign:'center',lineHeight:'1.5'}}, 'Lecture des données Strava puis Claude AI. Ça peut prendre quelques secondes de plus.'));
 }
 
 function renderError() {
