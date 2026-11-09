@@ -19,7 +19,7 @@ const RUNNER = {
   identity: "Yann · 73 kg · Nice · courses visées sur route",
   vma: "15,5 km/h",
   vmaPace: `3'52"/km`,
-  hrMax: "177 observée (réelle estimée 177-182)",
+  hrMax: "177 observée (réelle estimée 179-185)",
   // Zones de FC personnelles (borne haute en bpm, -1 = pas de borne)
   hrZones: [
     { name: "EF", max: 140 },
