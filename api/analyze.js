@@ -37,13 +37,13 @@ const RUNNER = {
   ],
   paces: [
     `Endurance fondamentale (EF) : 6'00"-6'45"/km, FC < 140`,
-    `Seuil1 (SV1) : 5'30"-6'00"/km, FC 140-150`,
+    `Seuil1 (SV1) : 5'20"-6'00"/km`,
     `Allure marathon : 5'10"-5'35"/km`,
     `Allure semi : 4'50"-5'10"/km`,
     `Seuil2 (SV2) : 4'40"-4'50"/km,`,
     `Allure 10 km : 4'25"-4'40"/km`,
     `Allure 5 km : 4'15"-4'30"/km`,
-    `VMA / VO2max : 3'50"-4'10"/km (1000 m en 3'55"-4'05", 400 m en 1'33"-1'38")`,
+    `VMA / VO2max : 3'50"-4'10"/km`,
     `30/30 : 3'10"-3'40"/km"`,
   ],
   profile: [
