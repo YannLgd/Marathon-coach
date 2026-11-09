@@ -69,16 +69,17 @@
 /* ============================================================
    MIGRATION (v3) : l'app n'est plus liée au Marathon de Nice.
    On purge les caches et l'ancien objectif chrono marathon.
+   v6 : séances détaillées (déroulé, objectif, critère) + logique de semaine.
    ============================================================ */
-const APP_VERSION = 5;
+const APP_VERSION = 6;
 (function migrate() {
   const v = parseInt(localStorage.getItem('mc_app_version') || '1', 10);
   if (v < 3) {
     ['mc_last_result','mc_weekly_plan','mc_confidence','mc_last_bilan',
      'mc_week_done_km','mc_volume_history','mc_goal','mc_objective']
       .forEach(function(k){ localStorage.removeItem(k); });
-    localStorage.setItem('mc_app_version', String(APP_VERSION));
   }
+  if (v < APP_VERSION) localStorage.setItem('mc_app_version', String(APP_VERSION));
 })();
 
 /* ============================================================
@@ -178,6 +179,13 @@ function saveWeeklyPlan(week) {
 function loadWeeklyPlan() {
   try { return JSON.parse(localStorage.getItem("mc_weekly_plan") || "null"); } catch { return null; }
 }
+// Fil conducteur de la semaine (1 phrase), sauvegardé avec le plan
+function saveWeekLogic(txt) {
+  if (txt && String(txt).trim()) localStorage.setItem("mc_week_logic", String(txt).trim());
+}
+function loadWeekLogic() {
+  return localStorage.getItem("mc_week_logic");
+}
 // Semaine (lundi) à laquelle correspond le cache mc_last_result / mc_weekly_plan actuel
 function saveWeekStart(weekStart) {
   if (weekStart) localStorage.setItem("mc_week_start", weekStart);
@@ -251,15 +259,17 @@ function extractKm(session) {
   return m ? m[1] + 'km' : '';
 }
 
-// Normalise une séance course en types colorés (accents ignorés)
+// Normalise une séance course en types colorés (accents ignorés).
+// Sortie longue testée en premier : "SL 18km dont allure marathon" reste une sortie longue.
 function normalizeRun(s) {
   if (!s) return null;
   const sl = s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  if (/(cote|denivele|grimpe|montee)/.test(sl)) return { label:'Cotes', color:'#34d399' };
-  if (/(fractionn|interval|vma|repet|fartlek)/.test(sl)) return { label:'Fractionne', color:'#f87171' };
-  if (/(tempo|seuil|allure marathon|allure spe|allure trail|resistance)/.test(sl)) return { label:'Tempo', color:'#fbbf24' };
   if (/(sortie longue|long run|\bsl\b|rando course|rando-course)/.test(sl)) return { label:'Sortie longue', color:'#a78bfa' };
-  if (/(footing|\bef\b|endurance|recup|regen|fond)/.test(sl)) return { label:'Footing', color:'#60a5fa' };
+  if (/(cote|denivele|grimpe|montee)/.test(sl)) return { label:'Côtes', color:'#34d399' };
+  if (/(fractionn|interval|vma|repet|fartlek|30\/30)/.test(sl)) return { label:'VMA', color:'#f87171' };
+  if (/(seuil|sv2)/.test(sl)) return { label:'Seuil', color:'#fbbf24' };
+  if (/(allure marathon|allure semi|allure 10|allure spe|\bam\b|tempo|resistance|allure trail)/.test(sl)) return { label:'Allure spé', color:'#fbbf24' };
+  if (/(footing|\bef\b|endurance|recup|regen|fond|sv1|lignes droites)/.test(sl)) return { label:'EF', color:'#60a5fa' };
   return null;
 }
 
@@ -373,7 +383,7 @@ function showDisconnectConfirm() {
     sub: 'Ton historique d\'analyse sera effacé. Ton objectif et tes préférences sont conservés.',
     okLabel: 'Déconnecter',
     onConfirm: function() {
-      ['mc_auth','mc_last_result','mc_weekly_plan','mc_week_start','mc_confidence','mc_pending_comment',
+      ['mc_auth','mc_last_result','mc_weekly_plan','mc_week_logic','mc_week_start','mc_confidence','mc_pending_comment',
        'mc_last_bilan','mc_last_activities','mc_volume_history','mc_week_done_km']
         .forEach(function(k) { localStorage.removeItem(k); });
       setState({ auth: null, result: null, savedAt: null, view: 'login' });
@@ -383,7 +393,7 @@ function showDisconnectConfirm() {
 
 // Invalidation des analyses liées à l'objectif
 function invalidateObjectiveCaches() {
-  ['mc_last_result','mc_weekly_plan','mc_week_start','mc_confidence','mc_last_bilan']
+  ['mc_last_result','mc_weekly_plan','mc_week_logic','mc_week_start','mc_confidence','mc_last_bilan']
     .forEach(function(k) { localStorage.removeItem(k); });
   state.result = null;
   state.savedAt = null;
@@ -466,6 +476,7 @@ async function analyze(mode, extra, comment) {
       setState({ loading:false, view:"bilan" });
     } else {
       if (data.result.week) saveWeeklyPlan(data.result.week);
+      saveWeekLogic(data.result.weekLogic);
       saveWeekStart(data.weekStart || getMondayStr());
       saveCache(data.result);
       setState({ loading:false, result:data.result, savedAt:Date.now(), view:"result" });
@@ -658,11 +669,12 @@ function renderHome() {
       h('span', {style:{color:'#7a889f',fontSize:'18px'}}, '>')));
   });
 
-  // Bloc Ma semaine : inchangé, disponible dans les deux modes
+  // Bloc Ma semaine
   if (week) {
     const runs = week.filter(function(w) { return normalizeRun(w.session); });
     if (runs.length) {
       const doneKm = loadWeekDone();
+      const logic = loadWeekLogic();
       const plannedKm = runs.reduce(function(s, w) {
         const km = parseFloat((extractKm(w.session) || '0').replace(',', '.'));
         return s + (isNaN(km) ? 0 : km);
@@ -680,7 +692,8 @@ function renderHome() {
 
       children.push(
         h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px'}},
-          h('div', {style:{fontSize:'11px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontWeight:'700'}}, 'Ma semaine'),
+          h('div', {style:{fontSize:'11px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'2px',marginBottom: logic ? '6px' : '12px',fontWeight:'700'}}, 'Ma semaine'),
+          logic ? h('div', {style:{fontSize:'12px',color:'#c4b5fd',lineHeight:'1.5',marginBottom:'12px'}}, logic) : null,
           (doneKm !== null && plannedKm > 0) ? h('div', {style:{display:'flex',alignItems:'center',gap:'12px',marginBottom:'12px'}},
             donutEl(doneKm, plannedKm),
             h('div', null,
@@ -1059,12 +1072,24 @@ function renderCross() {
     h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'transparent',border:'1px solid #1a2035',color:'#a3afc2',fontSize:'13px'}}, '← Retour'));
 }
 
+// Couleur d'un bloc du déroulé : échauffement bleu, retour au calme vert, corps de séance couleur du type
+function phaseColor(phase, mainColor) {
+  const p = (phase || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (p.indexOf('chauff') >= 0) return '#60a5fa';
+  if (p.indexOf('calme') >= 0) return '#34d399';
+  return mainColor;
+}
+
 function renderResult() {
   const cached2 = loadCache();
   const d = state.result || (cached2 ? cached2.result : null);
   if (!d) return renderHome();
   const cache = loadCache();
   const o = loadObjective();
+
+  const has = function(v){ return v && String(v).trim() && String(v).trim() !== '-'; };
+  const typeRun = normalizeRun(d.type || '');
+  const mainColor = typeRun ? typeRun.color : '#a78bfa';
 
   const stat = function(label,value,color) {
     return h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'13px 12px',borderBottom:'2px solid '+color+'35'}},
@@ -1080,7 +1105,10 @@ function renderResult() {
         h('span', {style:{fontSize:'12px',color:'#a3afc2',lineHeight:'1.5'}}, val)));
   };
 
-  const has = function(v){ return v && String(v).trim() && String(v).trim() !== '-'; };
+  const chip = function(text, color) {
+    return h('span', {style:{display:'inline-block',fontSize:'11px',fontWeight:'700',color:color,background:color+'18',border:'1px solid '+color+'30',borderRadius:'6px',padding:'3px 8px',marginRight:'6px',marginTop:'2px'}}, text);
+  };
+
   const statDefs = [];
   statDefs.push(['Distance', d.distance, '#a78bfa']);
   if (has(d.dplus)) statDefs.push(['D+', d.dplus, '#34d399']);
@@ -1090,16 +1118,40 @@ function renderResult() {
   statDefs.push(['RPE', d.rpe, '#fbbf24']);
   const statCells = statDefs.map(function(s){ return stat(s[0], s[1], s[2]); });
 
+  // Déroulé de la séance (blocs ordonnés)
+  const blocks = Array.isArray(d.structure) ? d.structure.filter(function(b){ return b && (has(b.detail) || has(b.phase)); }) : [];
+  const structureCard = blocks.length ? h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
+    h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'12px',fontWeight:'700'}}, 'Déroulé'),
+    blocks.map(function(b, i) {
+      const c = phaseColor(b.phase, mainColor);
+      const isLast = i === blocks.length - 1;
+      return h('div', {style:{display:'flex',gap:'12px',marginBottom: isLast ? '0' : '14px'}},
+        h('div', {style:{width:'3px',borderRadius:'2px',background:c,flexShrink:'0'}}),
+        h('div', {style:{flex:'1'}},
+          has(b.phase) ? h('div', {style:{fontSize:'11px',color:c,fontWeight:'800',marginBottom:'4px'}}, b.phase) : null,
+          has(b.detail) ? h('div', {style:{fontSize:'13px',color:'#e2e8f0',lineHeight:'1.5',marginBottom:(has(b.pace)||has(b.hr))?'6px':'0'}}, b.detail) : null,
+          (has(b.pace) || has(b.hr)) ? h('div', null,
+            has(b.pace) ? chip(b.pace, '#60a5fa') : null,
+            has(b.hr) ? chip('FC ' + String(b.hr).replace(/^FC\s*/i, ''), '#f87171') : null) : null));
+    })) : null;
+
   const children = [
     cache ? h('div', {style:{fontSize:'10px',color:'#7a889f',marginBottom:'10px',textAlign:'right'}}, 'En cache · il y a ' + formatAge(cache.savedAt)) : null,
     h('div', {style:{background:'linear-gradient(135deg,#1a0f35,#0d1a35)',borderRadius:'16px',padding:'20px 18px',marginBottom:'10px',border:'1px solid #2a1f4a'}},
       h('div', {style:{fontSize:'9px',color:'#a3afc2',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'5px',fontWeight:'700'}}, d.nextDay ? 'Seance recommandee · ' + d.nextDay : 'Seance recommandee'),
       h('div', {style:{fontSize:'24px',fontWeight:'900',color:'#fff',letterSpacing:'-0.5px',marginBottom:'3px'}}, d.headline),
-      h('div', {style:{fontSize:'13px',color:'#a3afc2'}}, d.type)),
+      h('div', {style:{fontSize:'13px',color:'#a3afc2'}}, d.type + (has(d.zone) ? ' · ' + d.zone : ''))),
+    has(d.goal) ? h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px',borderLeft:'3px solid '+mainColor}},
+      h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, 'Objectif de la séance'),
+      h('div', {style:{fontSize:'13px',color:'#e2e8f0',lineHeight:'1.5'}}, d.goal)) : null,
     h.apply(null, ['div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'10px'}}].concat(statCells)),
-    h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px',borderLeft:'3px solid #fbbf24'}},
+    structureCard,
+    has(d.success) ? h('div', {style:{background:'#032118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px',border:'1px solid #34d39930'}},
+      h('div', {style:{fontSize:'10px',color:'#34d399',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, '✓ Séance réussie si'),
+      h('div', {style:{fontSize:'13px',color:'#d1fae5',lineHeight:'1.5'}}, d.success)) : null,
+    has(d.tip) ? h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px',borderLeft:'3px solid #fbbf24'}},
       h('div', {style:{fontSize:'8px',color:'#78520a',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, 'Conseil cle'),
-      h('div', {style:{fontSize:'13px',color:'#fbbf24',lineHeight:'1.5'}}, d.tip)),
+      h('div', {style:{fontSize:'13px',color:'#fbbf24',lineHeight:'1.5'}}, d.tip)) : null,
     h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
       row('🍌','Avant',d.before), row('💧','Pendant',d.during),
       row('🥛','Apres',d.after), row('👟','Equipement',d.gear))
@@ -1112,7 +1164,8 @@ function renderResult() {
         h('div', {style:{borderRadius:'7px',padding:'6px 2px',background:(w.color||'#374151')+'18',border:'1px solid '+(w.color||'#374151')+'30',fontSize:'9px',color:w.color||'#374151',fontWeight:'700',minHeight:'40px',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:'1.2',textAlign:'center'}}, w.session));
     });
     children.push(h.apply(null, ['div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
-      h('div', {style:{fontSize:'11px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontWeight:'700'}}, 'Bloc semaine'),
+      h('div', {style:{fontSize:'11px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'2px',marginBottom: has(d.weekLogic) ? '6px' : '12px',fontWeight:'700'}}, 'Bloc semaine'),
+      has(d.weekLogic) ? h('div', {style:{fontSize:'12px',color:'#c4b5fd',lineHeight:'1.5',marginBottom:'12px'}}, d.weekLogic) : null,
       h.apply(null, ['div', {style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'5px'}}].concat(weekCards))
     ]));
   }
