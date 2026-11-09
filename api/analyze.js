@@ -1,4 +1,6 @@
 // api/analyze.js
+// v7 : date du jour + semaine en cours traitée comme partielle, détail d'une ligne par séance
+//      de la semaine, fiche coureur renvoyée au front (lecture seule)
 // v6 : profil coureur (VMA, zones, allures) + règles d'analyse et de programmation
 //      + séances détaillées (objectif, déroulé, critère de réussite) + logique de semaine
 
@@ -15,6 +17,9 @@ const PROFILE_CACHE = new Map(); // cache best effort (instance serveur chaude u
 const RUNNER = {
   updated: "09/11/2026",
   identity: "Yann · 73 kg · Nice · courses visées sur route",
+  vma: "15,5 km/h",
+  vmaPace: `3'52"/km`,
+  hrMax: "177 observée (réelle estimée 177-182)",
   // Zones de FC personnelles (borne haute en bpm, -1 = pas de borne)
   hrZones: [
     { name: "EF", max: 140 },
@@ -49,14 +54,25 @@ const RUNNER = {
   ],
 };
 
-const zonesTxt = RUNNER.hrZones
-  .map((z, i) => {
-    const lo = i === 0 ? null : RUNNER.hrZones[i - 1].max;
-    if (lo == null) return `${z.name} < ${z.max}`;
-    if (z.max === -1) return `${z.name} > ${lo}`;
-    return `${z.name} ${lo}-${z.max}`;
-  })
-  .join(" · ");
+const zoneRanges = RUNNER.hrZones.map((z, i) => {
+  const lo = i === 0 ? null : RUNNER.hrZones[i - 1].max;
+  if (lo == null) return { name: z.name, range: `< ${z.max}` };
+  if (z.max === -1) return { name: z.name, range: `> ${lo}` };
+  return { name: z.name, range: `${lo}-${z.max}` };
+});
+const zonesTxt = zoneRanges.map((z) => `${z.name} ${z.range}`).join(" · ");
+
+// Fiche coureur renvoyée au front (affichage en lecture seule)
+const RUNNER_CARD = {
+  updated: RUNNER.updated,
+  vma: RUNNER.vma,
+  vmaPace: RUNNER.vmaPace,
+  hrMax: RUNNER.hrMax,
+  zones: zoneRanges,
+  paces: RUNNER.paces,
+  tests: RUNNER.tests,
+  profile: RUNNER.profile,
+};
 
 const RUNNER_PROMPT = `\nPROFIL COUREUR (mis à jour le ${RUNNER.updated}, PRIORITAIRE sur toute autre estimation d'allure ou de zone) :
 TESTS ET RÉFÉRENCES :
@@ -558,6 +574,11 @@ export default async function handler(req, res) {
     monday.setDate(parisNow.getDate() + (dow === 0 ? -6 : 1 - dow));
     const mondayStr = dateStr(monday);
 
+    // Date du jour : la semaine en cours est partielle, le modèle ne doit pas la juger comme une semaine complète
+    const todayFr = parisNow.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    const daysElapsed = dow === 0 ? 7 : dow;
+    const todayPrompt = `\nAUJOURD'HUI : ${todayFr}. La semaine en cours (depuis le lundi ${mondayStr}) est PARTIELLE : ${daysElapsed} jour(s) écoulé(s) sur 7, aujourd'hui inclus. Ne juge JAMAIS son volume, sa charge ou son nombre de séances comme faibles ou insuffisants : évalue volume, régularité et tendance uniquement sur les semaines complètes de l'historique.`;
+
     // ---------- Objectif générique (éditable, date optionnelle) ----------
     const obj = objective || {};
     const objType = ["trail", "route", "autre"].includes(obj.type) ? obj.type : "route";
@@ -679,7 +700,7 @@ export default async function handler(req, res) {
     const progressionPrompt = `\nPROGRESSIVITÉ : le programme doit rester progressif et cohérent avec la base actuelle de Yann (moyenne récente ${recentAvgKm} km/semaine sur les 4 dernières semaines complètes, plus longue sortie des 28 derniers jours ${recentLongestRunKmRounded} km, ${daysSinceLastRun === null ? "aucune course récente" : daysSinceLastRun + " jour(s) depuis la dernière course"}). Ce sont des repères, pas des limites : n'applique aucun plafond chiffré ni pourcentage d'augmentation imposé. Ne parle JAMAIS de limites, de plafonds, de règle des +10 % ou de seuils de progressivité dans ta réponse, sauf si Yann le demande ou en cas de signe clair de fatigue ou de blessure dans son commentaire.`;
 
     const historyPrompt = `\nHISTORIQUE 12 SEMAINES (lundi de la semaine · km course · D+ toutes activités · charge) :\n` +
-      volume.map((w) => `- ${w.start} · ${w.km} km · D+ ${w.dplus} m · charge ${w.charge}`).join("\n");
+      volume.map((w, i) => `- ${w.start} · ${w.km} km · D+ ${w.dplus} m · charge ${w.charge}${i === volume.length - 1 ? " (semaine en cours, PARTIELLE)" : ""}`).join("\n");
 
     const deepPrompt = analysedCount > 0
       ? `\nANALYSE DES SÉANCES : les courses des ${DEEP_WINDOW_DAYS} derniers jours sont fournies avec leur structure RÉELLE mesurée dans les flux Strava (alternance rapide/lent, répétitions, récupérations, FC par phase et dans les blocs, temps en zones personnelles, dérive, relief). Appuie-toi dessus, jamais sur la seule allure moyenne ni sur la distance : en fractionné l'allure moyenne est basse à cause des récupérations alors que la séance est intense. Les titres des activités ne sont pas fournis et ne comptent pas : déduis le type de chaque séance uniquement de ces données. Une séance de qualité pèse lourd dans la charge et appelle de la récupération avant la prochaine séance intense, même si son allure moyenne et sa distance sont modestes. Si une détection semble douteuse (terrain vallonné, répétitions irrégulières, FC sans contraste), dis-le avec prudence au lieu d'affirmer.${medianRunMin ? ` Durée médiane des sorties de Yann sur 12 semaines : ${medianRunMin} min (repère pour reconnaître une sortie longue).` : ""}`
@@ -740,15 +761,15 @@ export default async function handler(req, res) {
 
     const schema = isBilan
       ? `{"niveau":"string (ex: Intermédiaire, Bon, En reprise)","tendance":"string (ex: En progression, Stable, En baisse)","acquis":["string","string","string"],"atravailler":["string","string","string"],"priorites":["string","string","string"],"verdict":"continuer"|"ameliorer"|"downgrade","verdictDetail":"string (2-3 phrases honnêtes sur l'objectif)","confidence":75}`
-      : `{"headline":"string (3 mots max)","type":"string (zone de la séance)","zone":"string (ex: SV2 · FC 158-162)","goal":"string (1 phrase)","success":"string (1 critère mesurable)","structure":[{"phase":"Échauffement","detail":"string","pace":"string","hr":"string"},{"phase":"Corps de séance","detail":"string","pace":"string","hr":"string"},{"phase":"Retour au calme","detail":"string","pace":"string","hr":"string"}],"distance":"string (ex: 12 km)","dplus":"string (ex: 400 m, ou '' si plat)","duration":"string (ex: 1h10)","pace":"string (fourchette du corps de séance)","hr":"string","rpe":"string","tip":"string (1 phrase)","before":"string","during":"string","after":"string","gear":"string","why":"string (2-3 phrases)","weekLogic":"string (1 phrase)","confidence":75,"nextDay":"Lundi","week":[{"day":"Lun","session":"string","color":"#hex","done":false},{"day":"Mar","session":"string","color":"#hex","done":false},{"day":"Mer","session":"string","color":"#hex","done":false},{"day":"Jeu","session":"string","color":"#hex","done":false},{"day":"Ven","session":"string","color":"#hex","done":false},{"day":"Sam","session":"string","color":"#hex","done":false},{"day":"Dim","session":"string","color":"#hex","done":false}]}`;
+      : `{"headline":"string (3 mots max)","type":"string (zone de la séance)","zone":"string (ex: SV2 · FC 158-162)","goal":"string (1 phrase)","success":"string (1 critère mesurable)","structure":[{"phase":"Échauffement","detail":"string","pace":"string","hr":"string"},{"phase":"Corps de séance","detail":"string","pace":"string","hr":"string"},{"phase":"Retour au calme","detail":"string","pace":"string","hr":"string"}],"distance":"string (ex: 12 km)","dplus":"string (ex: 400 m, ou '' si plat)","duration":"string (ex: 1h10)","pace":"string (fourchette du corps de séance)","hr":"string","rpe":"string","tip":"string (1 phrase)","before":"string","during":"string","after":"string","gear":"string","why":"string (2-3 phrases)","weekLogic":"string (1 phrase)","confidence":75,"nextDay":"Lundi","week":[{"day":"Lun","session":"string","detail":"string","color":"#hex","done":false},{"day":"Mar","session":"string","detail":"string","color":"#hex","done":false},{"day":"Mer","session":"string","detail":"string","color":"#hex","done":false},{"day":"Jeu","session":"string","detail":"string","color":"#hex","done":false},{"day":"Ven","session":"string","detail":"string","color":"#hex","done":false},{"day":"Sam","session":"string","detail":"string","color":"#hex","done":false},{"day":"Dim","session":"string","detail":"string","color":"#hex","done":false}]}`;
 
-    const weekRules = ` RÈGLES week[] : contient TOUJOURS EXACTEMENT 7 entrées, dans l'ordre Lun, Mar, Mer, Jeu, Ven, Sam, Dim (semaine en cours, du lundi ${mondayStr} au dimanche). Chaque entrée a "day", "session", "color", "done". Format de "session" pour une course : la zone puis la distance, court, ex. "Seuil 10km", "VMA 9km", "EF 10km", "EF + LD 10km", "Récup 6km", "Allure marathon 12km", "SL 18km", "SL 18km dont AM", "Côtes 8km". Jours sans course : "session":"Repos" (ou le cross-training prévu), "color":"#374151", "done":false. "done":true UNIQUEMENT pour les séances déjà réalisées cette semaine. Couleurs : EF/Récup "#60a5fa" · Seuil/Allure spécifique "#fbbf24" · VMA/Fractionné "#f87171" · Côtes "#34d399" · Sortie longue "#a78bfa".`;
+    const weekRules = ` RÈGLES week[] : contient TOUJOURS EXACTEMENT 7 entrées, dans l'ordre Lun, Mar, Mer, Jeu, Ven, Sam, Dim (semaine en cours, du lundi ${mondayStr} au dimanche). Chaque entrée a "day", "session", "detail", "color", "done". "detail" : UNE ligne qui dit concrètement ce que sera la séance, avec allures et FC du profil (ex. "20' EF, 3x10' seuil 4'40\"-4'50\" FC 158-162, récup 2'30\" trot, 10' retour au calme" ou "10 km EF 6'00\"-6'45\" FC < 140 + 6 lignes droites") ; pour une séance déjà faite, ce qui a été réalisé d'après l'analyse ; "" pour Repos. Format de "session" pour une course : la zone puis la distance, court, ex. "Seuil 10km", "VMA 9km", "EF 10km", "EF + LD 10km", "Récup 6km", "Allure marathon 12km", "SL 18km", "SL 18km dont AM", "Côtes 8km". Jours sans course : "session":"Repos" (ou le cross-training prévu), "color":"#374151", "done":false. "done":true UNIQUEMENT pour les séances déjà réalisées cette semaine. Couleurs : EF/Récup "#60a5fa" · Seuil/Allure spécifique "#fbbf24" · VMA/Fractionné "#f87171" · Côtes "#34d399" · Sortie longue "#a78bfa".`;
 
     const baseIdentity = `Tu es un coach de course à pied expert (route et trail). Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : ${RUNNER.identity} · cycle centré sur la course à pied, avec du vélo, de la natation et de la musculation en complément occasionnel.`;
 
     const systemPrompt = isBilan
-      ? `${baseIdentity}${RUNNER_PROMPT}\n${objDesc}.${trailGuidance}${repriseGuidance}${chargePrompt}${historyPrompt}${progressionPrompt}${deepPrompt}${ANALYSIS_RULES}${commentPrompt}\nSois honnête et précis, ne surestime pas le niveau actuel (cela ne change pas la règle de l'indice de confiance ci-dessous). ${confidenceRule} Schéma JSON : ${schema}. "verdict" est exactement l'une des trois valeurs : "continuer", "ameliorer" ou "downgrade". "acquis", "atravailler" et "priorites" sont des tableaux de 3 strings courtes.`
-      : `${baseIdentity}${RUNNER_PROMPT}\n${objDesc}.${trailGuidance}${repriseGuidance}${chargePrompt}${historyPrompt}${progressionPrompt}${deepPrompt}${ANALYSIS_RULES}${PROGRAM_RULES}${WRITING_RULES}${prefsPrompt || ""}${runsWeekPrompt}${commentPrompt}\n${confidenceRule} Schéma JSON : ${schema} Le champ "nextDay" est le jour de la semaine en français (ex: "Lundi", "Mardi"...) où doit avoir lieu la prochaine séance.${weekRules}`;
+      ? `${baseIdentity}${RUNNER_PROMPT}\n${objDesc}.${todayPrompt}${trailGuidance}${repriseGuidance}${chargePrompt}${historyPrompt}${progressionPrompt}${deepPrompt}${ANALYSIS_RULES}${commentPrompt}\nSois honnête et précis, ne surestime pas le niveau actuel (cela ne change pas la règle de l'indice de confiance ci-dessous). ${confidenceRule} Schéma JSON : ${schema}. "verdict" est exactement l'une des trois valeurs : "continuer", "ameliorer" ou "downgrade". "acquis", "atravailler" et "priorites" sont des tableaux de 3 strings courtes.`
+      : `${baseIdentity}${RUNNER_PROMPT}\n${objDesc}.${todayPrompt}${trailGuidance}${repriseGuidance}${chargePrompt}${historyPrompt}${progressionPrompt}${deepPrompt}${ANALYSIS_RULES}${PROGRAM_RULES}${WRITING_RULES}${prefsPrompt || ""}${runsWeekPrompt}${commentPrompt}\n${confidenceRule} Schéma JSON : ${schema} Le champ "nextDay" est le jour de la semaine en français (ex: "Lundi", "Mardi"...) où doit avoir lieu la prochaine séance.${weekRules}`;
 
     const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -802,6 +823,7 @@ export default async function handler(req, res) {
       volume,
       progression: { daysSinceLastRun, recentAvgKm, recentLongestRunKm: recentLongestRunKmRounded },
       objective: { type: objType, daysLeft },
+      runner: RUNNER_CARD, // fiche coureur (lecture seule côté app)
       deep: profiles.map((p) => ({ iso: p.iso, kind: p.kind })), // types détectés (diagnostic)
       activities: activities.slice(0, 5).map((a) => ({
         date: new Date(a.start_date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }),
