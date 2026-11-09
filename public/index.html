@@ -70,8 +70,9 @@
    MIGRATION (v3) : l'app n'est plus liée au Marathon de Nice.
    On purge les caches et l'ancien objectif chrono marathon.
    v6 : séances détaillées (déroulé, objectif, critère) + logique de semaine.
+   v7 : fiche coureur (lecture seule) + détail des séances de la semaine au toucher.
    ============================================================ */
-const APP_VERSION = 6;
+const APP_VERSION = 7;
 (function migrate() {
   const v = parseInt(localStorage.getItem('mc_app_version') || '1', 10);
   if (v < 3) {
@@ -185,6 +186,13 @@ function saveWeekLogic(txt) {
 }
 function loadWeekLogic() {
   return localStorage.getItem("mc_week_logic");
+}
+// Fiche coureur renvoyée par le serveur (source : bloc RUNNER de api/analyze.js)
+function saveRunner(r) {
+  if (r) localStorage.setItem("mc_runner", JSON.stringify(r));
+}
+function loadRunner() {
+  try { return JSON.parse(localStorage.getItem("mc_runner") || "null"); } catch { return null; }
 }
 // Semaine (lundi) à laquelle correspond le cache mc_last_result / mc_weekly_plan actuel
 function saveWeekStart(weekStart) {
@@ -409,6 +417,7 @@ let state = {
   savedAt: cached ? cached.savedAt : null,
   auth: JSON.parse(localStorage.getItem("mc_auth") || "null"),
   lastAction: null,
+  weekDetail: null, // jour ouvert dans le détail de la semaine (ex. "Jeu")
 };
 
 function setState(patch) { state = { ...state, ...patch }; render(); }
@@ -464,6 +473,7 @@ async function analyze(mode, extra, comment) {
 
     if (data.activities) saveActivities(data.activities);
     if (data.volume) saveVolume(data.volume);
+    if (data.runner) saveRunner(data.runner);
     saveWeekDone(data.weekDoneKm);
     // L'indice de confiance n'a de sens que rapporté à un objectif
     if (hasObjective() && data.result.confidence !== undefined) saveConfidence(data.result.confidence);
@@ -518,6 +528,27 @@ function confidenceColor(v) {
   if (v >= 75) return '#34d399';
   if (v >= 50) return '#fbbf24';
   return '#f87171';
+}
+
+/* ---------------- Détail d'une séance de la semaine ---------------- */
+const DAY_FULL = { Lun:'Lundi', Mar:'Mardi', Mer:'Mercredi', Jeu:'Jeudi', Ven:'Vendredi', Sam:'Samedi', Dim:'Dimanche' };
+
+function toggleWeekDetail(day) {
+  setState({ weekDetail: state.weekDetail === day ? null : day });
+}
+
+function weekDetailPanel(week) {
+  if (!state.weekDetail || !week) return null;
+  const w = week.find(function(x) { return x.day === state.weekDetail; });
+  if (!w) return null;
+  const run = normalizeRun(w.session);
+  const color = run ? run.color : (w.color || '#a78bfa');
+  const detail = w.detail && String(w.detail).trim();
+  return h('div', {style:{marginTop:'10px',background:color+'12',border:'1px solid '+color+'35',borderRadius:'10px',padding:'12px 14px'}},
+    h('div', {style:{fontSize:'12px',fontWeight:'800',color:color,marginBottom:'5px'}},
+      (DAY_FULL[w.day] || w.day) + ' · ' + w.session + (w.done ? ' · fait ✓' : '')),
+    h('div', {style:{fontSize:'12px',color:detail ? '#e2e8f0' : '#8b9ab3',lineHeight:'1.5'}},
+      detail || 'Détail indisponible : relance « Prochaine semaine » pour l\'obtenir.'));
 }
 
 /* ---------------- Header ---------------- */
@@ -683,9 +714,10 @@ function renderHome() {
       const cards = runs.map(function(w) {
         const run = normalizeRun(w.session);
         const km = w.distance || extractKm(w.session) || '';
-        return h('div', {style:{textAlign:'center',flexShrink:'0',minWidth:'64px',opacity: w.done ? '0.5' : '1'}},
+        const selected = state.weekDetail === w.day;
+        return h('div', {onclick: function() { toggleWeekDetail(w.day); }, style:{textAlign:'center',flexShrink:'0',minWidth:'64px',cursor:'pointer',opacity: w.done && !selected ? '0.5' : '1'}},
           h('div', {style:{fontSize:'8px',color:'#8b9ab3',marginBottom:'4px',textTransform:'uppercase',fontWeight:'600'}}, w.day + (w.done ? ' ✓' : '')),
-          h('div', {style:{borderRadius:'10px',padding:'8px 6px',background:run.color+'15',border:'1px solid '+run.color+'30',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'3px',minHeight:'66px'}},
+          h('div', {style:{borderRadius:'10px',padding:'8px 6px',background:run.color+(selected?'30':'15'),border:(selected?'2px solid '+run.color:'1px solid '+run.color+'30'),display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'3px',minHeight:'66px'}},
             h('div', {style:{fontSize:'8px',color:run.color,fontWeight:'800',lineHeight:'1.2',textAlign:'center'}}, run.label),
             km ? h('div', {style:{fontSize:'12px',color:'#e2e8f0',fontWeight:'900',lineHeight:'1',marginTop:'2px'}}, km) : null));
       });
@@ -699,9 +731,21 @@ function renderHome() {
             h('div', null,
               h('div', {style:{fontSize:'16px',fontWeight:'900',color:'#e2e8f0',lineHeight:'1'}}, doneKm + ' / ' + Math.round(plannedKm) + ' km'),
               h('div', {style:{fontSize:'10px',color:'#a3afc2',marginTop:'4px'}}, 'Volume course · fait vs planifie'))) : null,
-          h.apply(null, ['div', {style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'2px'}}].concat(cards))));
+          h.apply(null, ['div', {style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'2px'}}].concat(cards)),
+          weekDetailPanel(week),
+          !state.weekDetail ? h('div', {style:{fontSize:'10px',color:'#7a889f',marginTop:'8px'}}, 'Touche une séance pour voir son contenu.') : null));
     }
   }
+
+  // Fiche coureur (sans appel API)
+  children.push(h('button', {
+    onclick: function() { setState({ view:'runner' }); },
+    style:{width:'100%',display:'flex',alignItems:'center',gap:'14px',background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px',color:'#e2e8f0',textAlign:'left'}},
+    h('span', {style:{width:'42px',height:'42px',borderRadius:'12px',background:'#141824',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'20px',flexShrink:'0'}}, '📋'),
+    h('div', {style:{flex:'1'}},
+      h('div', {style:{fontSize:'14px',fontWeight:'600',marginBottom:'2px'}}, 'Ma fiche coureur'),
+      h('div', {style:{fontSize:'12px',color:'#a3afc2'}}, 'VMA, seuils, allures, zones de FC')),
+    h('span', {style:{color:'#7a889f',fontSize:'18px'}}, '>')));
 
   // Graphe km cumules par semaine : course a pied uniquement (route, trail, tapis)
   const vol = loadVolume();
@@ -1072,6 +1116,78 @@ function renderCross() {
     h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'transparent',border:'1px solid #1a2035',color:'#a3afc2',fontSize:'13px'}}, '← Retour'));
 }
 
+/* ---------------- Fiche coureur (lecture seule) ---------------- */
+function renderRunner() {
+  const r = loadRunner();
+  const back = h('div', {style:{display:'flex',alignItems:'center',gap:'12px',marginBottom:'16px'}},
+    h('button', {onclick:function(){ setState({view:'home'}); }, style:{background:'none',border:'none',color:'#7c3aed',fontSize:'22px',cursor:'pointer',padding:'0',lineHeight:'1'}}, '←'),
+    h('div', {style:{fontSize:'16px',fontWeight:'800',color:'#e2e8f0'}}, '📋 Ma fiche coureur'));
+
+  if (!r) {
+    return h('div', {class:'fade',style:{padding:'20px 18px'}}, back,
+      h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'18px',fontSize:'13px',color:'#a3afc2',lineHeight:'1.6'}},
+        'Ta fiche se charge à la prochaine analyse. Lance « Ma prochaine seance » ou « Prochaine semaine », puis reviens ici.'));
+  }
+
+  const zoneColors = ['#60a5fa','#22d3ee','#a3e635','#fbbf24','#f87171'];
+  const title = function(t) {
+    return h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'10px',fontWeight:'700'}}, t);
+  };
+  const card = function() {
+    return h.apply(null, ['div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}}].concat(Array.prototype.slice.call(arguments)));
+  };
+  // "Seuil (SV2) : 4'40"-4'50"/km, FC 158-162" → libellé + valeur
+  const splitLine = function(line) {
+    const i = line.indexOf(' : ');
+    return i > 0 ? [line.slice(0, i), line.slice(i + 3)] : [line, ''];
+  };
+  const bullets = function(items, color) {
+    return (items || []).map(function(t) {
+      return h('div', {style:{display:'flex',gap:'8px',alignItems:'flex-start',marginBottom:'7px'}},
+        h('div', {style:{width:'5px',height:'5px',borderRadius:'50%',background:color,flexShrink:'0',marginTop:'6px'}}),
+        h('div', {style:{fontSize:'12px',color:'#c4cdd8',lineHeight:'1.5'}}, t));
+    });
+  };
+
+  return h('div', {class:'fade',style:{padding:'20px 18px'}},
+    back,
+    h('div', {style:{background:'linear-gradient(135deg,#1a0f35,#0d1a35)',borderRadius:'16px',padding:'18px',marginBottom:'10px',border:'1px solid #2a1f4a'}},
+      h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}},
+        h('div', null,
+          h('div', {style:{fontSize:'10px',color:'#a3afc2',fontWeight:'700',marginBottom:'4px'}}, 'VMA'),
+          h('div', {style:{fontSize:'26px',fontWeight:'900',color:'#fff',letterSpacing:'-0.5px',lineHeight:'1'}}, r.vma || '-'),
+          h('div', {style:{fontSize:'11px',color:'#c4b5fd',marginTop:'4px'}}, r.vmaPace || '')),
+        h('div', null,
+          h('div', {style:{fontSize:'10px',color:'#a3afc2',fontWeight:'700',marginBottom:'4px'}}, 'FC max'),
+          h('div', {style:{fontSize:'26px',fontWeight:'900',color:'#fff',letterSpacing:'-0.5px',lineHeight:'1'}}, String(r.hrMax || '-').split(' ')[0]),
+          h('div', {style:{fontSize:'11px',color:'#c4b5fd',marginTop:'4px',lineHeight:'1.3'}}, String(r.hrMax || '').split(' ').slice(1).join(' ')))),
+      h('div', {style:{fontSize:'10px',color:'#8b9ab3',marginTop:'12px'}}, 'Mise à jour le ' + (r.updated || '?'))),
+
+    card(title('Allures de référence'),
+      (r.paces || []).map(function(line, i, arr) {
+        const parts = splitLine(line);
+        return h('div', {style:{display:'flex',justifyContent:'space-between',gap:'12px',padding:'8px 0',borderBottom: i < arr.length - 1 ? '1px solid #1a2035' : 'none'}},
+          h('div', {style:{fontSize:'12px',color:'#a3afc2',flexShrink:'0',maxWidth:'45%'}}, parts[0]),
+          h('div', {style:{fontSize:'12px',color:'#e2e8f0',fontWeight:'700',textAlign:'right'}}, parts[1]));
+      })),
+
+    card(title('Zones de FC'),
+      (r.zones || []).map(function(z, i) {
+        const c = zoneColors[i] || '#a78bfa';
+        return h('div', {style:{display:'flex',alignItems:'center',gap:'10px',marginBottom:'8px'}},
+          h('div', {style:{width:'4px',height:'22px',borderRadius:'2px',background:c,flexShrink:'0'}}),
+          h('div', {style:{flex:'1',fontSize:'12px',color:'#c4cdd8'}}, z.name),
+          h('div', {style:{fontSize:'12px',color:c,fontWeight:'800'}}, z.range + ' bpm'));
+      })),
+
+    card(title('Tests et références'), bullets(r.tests, '#60a5fa')),
+    card(title('Profil'), bullets(r.profile, '#a78bfa')),
+
+    h('div', {style:{fontSize:'11px',color:'#7a889f',textAlign:'center',lineHeight:'1.5',margin:'6px 0 14px'}},
+      'Pour modifier ces valeurs : bloc RUNNER du fichier api/analyze.js sur GitHub. La fiche se met à jour à la prochaine analyse.'),
+    h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#a3afc2',fontSize:'13px',fontWeight:'600'}}, '← Retour'));
+}
+
 // Couleur d'un bloc du déroulé : échauffement bleu, retour au calme vert, corps de séance couleur du type
 function phaseColor(phase, mainColor) {
   const p = (phase || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -1159,14 +1275,18 @@ function renderResult() {
 
   if (d.week) {
     const weekCards = d.week.map(function(w) {
-      return h('div', {style:{opacity: w.done ? '0.5' : '1'}},
+      const isRun = !!normalizeRun(w.session);
+      const selected = state.weekDetail === w.day;
+      const wc = w.color || '#374151';
+      return h('div', {onclick: isRun ? function() { toggleWeekDetail(w.day); } : null, style:{opacity: w.done && !selected ? '0.5' : '1',cursor: isRun ? 'pointer' : 'default'}},
         h('div', {style:{fontSize:'8px',color:'#8b9ab3',marginBottom:'5px',textTransform:'uppercase',textAlign:'center',fontWeight:'600'}}, w.day + (w.done ? ' ✓' : '')),
-        h('div', {style:{borderRadius:'7px',padding:'6px 2px',background:(w.color||'#374151')+'18',border:'1px solid '+(w.color||'#374151')+'30',fontSize:'9px',color:w.color||'#374151',fontWeight:'700',minHeight:'40px',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:'1.2',textAlign:'center'}}, w.session));
+        h('div', {style:{borderRadius:'7px',padding:'6px 2px',background:wc+(selected?'35':'18'),border:(selected?'2px solid '+wc:'1px solid '+wc+'30'),fontSize:'9px',color:w.color||'#374151',fontWeight:'700',minHeight:'40px',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:'1.2',textAlign:'center'}}, w.session));
     });
     children.push(h.apply(null, ['div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
       h('div', {style:{fontSize:'11px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'2px',marginBottom: has(d.weekLogic) ? '6px' : '12px',fontWeight:'700'}}, 'Bloc semaine'),
       has(d.weekLogic) ? h('div', {style:{fontSize:'12px',color:'#c4b5fd',lineHeight:'1.5',marginBottom:'12px'}}, d.weekLogic) : null,
-      h.apply(null, ['div', {style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'5px'}}].concat(weekCards))
+      h.apply(null, ['div', {style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'5px'}}].concat(weekCards)),
+      weekDetailPanel(d.week)
     ]));
   }
 
@@ -1246,7 +1366,7 @@ function render() {
   const app = document.getElementById('app');
   app.innerHTML = '';
   if (state.view !== 'login') app.appendChild(renderHeader());
-  const views = { home:renderHome, login:renderLogin, loading:renderLoading, error:renderError, cross:renderCross, result:renderResult, prefs:renderPrefs, objective:renderObjective, bilan:renderBilan };
+  const views = { home:renderHome, login:renderLogin, loading:renderLoading, error:renderError, cross:renderCross, result:renderResult, prefs:renderPrefs, objective:renderObjective, bilan:renderBilan, runner:renderRunner };
   app.appendChild((views[state.view]||renderHome)());
 }
 
