@@ -1,5 +1,5 @@
 // api/state.js
-// GET  : derniers résultats sauvegardés côté serveur (séance/semaine + bilan).
+// GET  : derniers résultats sauvegardés côté serveur (séance/semaine, bilan, dernière séance, état).
 // POST : met à jour objectif et préférences sans lancer d'analyse.
 // Protégé par la clé de l'app (en-tête x-app-key).
 
@@ -13,8 +13,10 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === "GET") {
-      const [result, bilan, strava] = await Promise.all([getJSON(KEYS.result), getJSON(KEYS.bilan), getJSON(KEYS.strava)]);
-      return res.json({ ok: true, stravaLinked: !!(strava && strava.refresh_token), result, bilan });
+      const [result, bilan, strava, last, status] = await Promise.all([
+        getJSON(KEYS.result), getJSON(KEYS.bilan), getJSON(KEYS.strava), getJSON(KEYS.last), getJSON(KEYS.status),
+      ]);
+      return res.json({ ok: true, stravaLinked: !!(strava && strava.refresh_token), result, bilan, last, status });
     }
     if (req.method === "POST") {
       const b = req.body || {};
