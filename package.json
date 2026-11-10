@@ -2,6 +2,7 @@
   "name": "marathon-coach",
   "private": true,
   "dependencies": {
-    "@vercel/functions": "3.10.3"
+    "@vercel/functions": "3.10.3",
+    "web-push": "3.6.7"
   }
 }
