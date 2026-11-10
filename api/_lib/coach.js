@@ -799,3 +799,94 @@ export async function runAnalysis(params) {
     return reply(500, { error: "Erreur serveur : " + (e && e.message ? e.message : String(e)) });
   }
 }
+
+/* ============================================================
+   Analyse détaillée d'UNE séance (dernière course ou activité donnée)
+   v9 : écran « Dernière séance » (prévu vs réalisé)
+   ============================================================ */
+const isRunAct = (a) => ["Run", "TrailRun", "VirtualRun"].some((t) => a && (a.type === t || a.sport_type === t));
+
+async function callClaudeJSON(system, user, maxTokens) {
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: maxTokens || 2000,
+      temperature: 0,
+      system,
+      messages: [{ role: "user", content: user }],
+    }),
+  });
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    return { error: `Erreur API Claude (${r.status})`, detail: t.slice(0, 300) };
+  }
+  const data = await r.json();
+  const raw = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+  const s = raw.indexOf("{");
+  const e = raw.lastIndexOf("}");
+  if (s === -1 || e === -1) return { error: "JSON introuvable dans la réponse" };
+  try { return { json: JSON.parse(raw.slice(s, e + 1)) }; } catch (err) { return { error: "Parse error (JSON invalide)" }; }
+}
+
+// params : { access_token, activityId (optionnel : sinon dernière course), planned (texte de la séance prévue, optionnel) }
+export async function runLastSessionAnalysis(params) {
+  try {
+    const { access_token, activityId, planned } = params || {};
+    if (!access_token) return reply(400, { error: "No access_token" });
+
+    const after = Math.floor(Date.now() / 1000) - 21 * 86400;
+    const list = await stravaGet(`/athlete/activities?after=${after}&per_page=40`, access_token, 8000);
+    if (!Array.isArray(list)) return reply(401, { error: "Strava auth failed" });
+    const acts = list.slice().sort((a, b) => new Date(b.start_date) - new Date(a.start_date));
+
+    let target = activityId ? acts.find((a) => String(a.id) === String(activityId)) : acts.find(isRunAct);
+    if (!target && activityId) target = await stravaGet(`/activities/${activityId}`, access_token, 8000);
+    if (!target) return reply(404, { error: "Aucune course trouvée sur les 21 derniers jours." });
+    if (!isRunAct(target)) return reply(422, { error: "La dernière activité n'est pas une course." });
+
+    // Séance analysée + jusqu'à 5 courses précédentes pour comparer la FC à allure égale
+    const others = acts.filter((a) => isRunAct(a) && a.id !== target.id && a.moving_time >= 300).slice(0, 5);
+    const profiles = await deepAnalyzeRuns([target, ...others], access_token);
+    const targetProfile = profiles[0];
+    const otherProfiles = profiles.slice(1);
+
+    const system = `Tu es un coach de course à pied expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : ${RUNNER.identity}.${RUNNER_PROMPT}${ANALYSIS_RULES}
+TÂCHE : analyse détaillée de la séance indiquée, à partir de sa structure RÉELLE mesurée dans les flux Strava (ne te fie ni au titre ni à l'allure moyenne seule).
+- Si une séance était prévue, compare précisément prévu et réalisé (allures, FC, durées, récupérations) et donne un verdict honnête : "reussie", "partielle" ou "ratee". Si rien n'était prévu : "libre", et juge la séance pour ce qu'elle est.
+- Vérifie la stabilisation de la FC dans les blocs longs, la dérive, le temps hors zone ; en footing, signale toute FC au-dessus de ${RUNNER.footingHrAlert}.
+- Compare la FC à allure égale avec les séances récentes fournies pour détecter fatigue ou progrès, en restant prudent (météo inconnue).
+- Vocabulaire du profil (EF, SV1, seuil, allure marathon, allure semi, allure 10 km, VMA, sortie longue, récupération). Jamais "tempo" seul. Concis, pas de répétition entre les champs.
+Schéma JSON : {"title":"string (type réel de la séance, ex: Seuil 3x10')","verdict":"reussie"|"partielle"|"ratee"|"libre","verdictLabel":"string court (ex: Séance réussie)","summary":"string (2 phrases)","planned":"string (ce qui était prévu, '' si rien)","done":"string (1 ligne, ce qui a été réellement couru)","keyNumbers":[{"label":"string","value":"string"}],"blocks":[{"label":"string (ex: Rép 1, Échauffement)","detail":"string"}],"hr":"string (2 phrases sur la FC)","fatigue":"string (1-2 phrases)","positives":["string"],"improve":["string"],"impact":"string (1-2 phrases : conséquence pour les prochaines séances)"}. "keyNumbers" : 4 à 6 chiffres clés. "blocks" : le déroulé réel, un élément par phase ou répétition (14 maximum, regroupe si plus). "positives" et "improve" : 1 à 3 éléments chacun.`;
+
+    const user = `SÉANCE À ANALYSER :\n${targetProfile.text}\n\nSÉANCE PRÉVUE : ${planned && String(planned).trim() ? planned : "aucune séance prévue connue"}\n\n${otherProfiles.length ? "COURSES RÉCENTES POUR COMPARAISON :\n" + otherProfiles.map((p) => p.text).join("\n") : "Pas d'autre course récente."}`;
+
+    const out = await callClaudeJSON(system, user, 2000);
+    if (out.error) return reply(502, { error: out.error, detail: out.detail });
+
+    return reply(200, {
+      savedAt: Date.now(),
+      activityId: target.id,
+      date: (target.start_date_local || target.start_date || "").slice(0, 10),
+      distanceKm: Math.round(target.distance / 100) / 10,
+      analysis: out.json,
+    });
+  } catch (e) {
+    return reply(500, { error: "Erreur serveur : " + (e && e.message ? e.message : String(e)) });
+  }
+}
+
+// Utilisé par le pipeline automatique
+export async function getActivity(id, token) {
+  return stravaGet(`/activities/${id}`, token, 8000);
+}
+export async function getLatestActivities(token, perPage) {
+  const r = await stravaGet(`/athlete/activities?per_page=${perPage || 5}`, token, 8000);
+  return Array.isArray(r) ? r : null;
+}
+export { isRunAct };
