@@ -695,12 +695,21 @@ export async function runAnalysis(params) {
     // Runs déjà faits cette semaine : le nombre de séances choisi par Yann est un MAXIMUM
     const maxS = Number(maxSessions) > 0 ? Math.round(Number(maxSessions)) : null;
     const remainingMax = maxS !== null ? Math.max(0, maxS - runsThisWeekCount) : null;
+    // Le dimanche, ou quand plus aucune séance n'est à placer cette semaine,
+    // le programme bascule sur la semaine SUIVANTE (sinon elle n'est jamais visible).
+    const planNext = dow === 0 || remainingMax === 0;
+    const nextMonday = new Date(monday);
+    nextMonday.setDate(monday.getDate() + 7);
+    const nextMondayStr = dateStr(nextMonday);
+    const planWeekStart = planNext ? nextMondayStr : mondayStr;
+
     let runsWeekPrompt = "";
-    if (runsThisWeekCount > 0) {
+    if (planNext) {
+      runsWeekPrompt = `\nSEMAINE À PLANIFIER : la semaine SUIVANTE (du lundi ${nextMondayStr} au dimanche), car ${dow === 0 ? "aujourd'hui est dimanche" : "toutes les séances disponibles de la semaine en cours sont faites"}. week[] décrit cette semaine suivante, entièrement à venir ("done":false partout), avec AU MAXIMUM ${maxS !== null ? maxS : "le nombre des PRÉFÉRENCES"} séance(s) de course, sans séance de remplissage. La semaine en cours (${runsThisWeekCount} séance(s), ${weekDoneKm} km) compte comme charge récente.${dow === 0 && remainingMax !== 0 ? " La séance recommandée (headline, type, nextDay...) peut être aujourd'hui (\"nextDay\":\"Dimanche\") si c'est pertinent, sinon c'est la première séance de la semaine suivante." : " La séance recommandée (headline, type, nextDay...) est la première séance de la semaine suivante."}`;
+    } else if (runsThisWeekCount > 0) {
       runsWeekPrompt = `\nSEMAINE EN COURS (depuis lundi ${mondayStr}) : Yann a DÉJÀ effectué ${runsThisWeekCount} séance(s) de course cette semaine, pour ${weekDoneKm} km au total. Dans week[], marque ces jours déjà courus avec "done":true et une "session" décrivant la séance réalisée avec son VRAI type d'après l'analyse détaillée (ex. "Seuil 9km").`;
       if (remainingMax !== null) {
         runsWeekPrompt += ` Il reste AU MAXIMUM ${remainingMax} séance(s) de course à planifier (maximum hebdomadaire ${maxS} moins ${runsThisWeekCount} déjà faite(s)) : planifie le nombre optimal entre 0 et ${remainingMax}, jamais plus, sans séance de remplissage.`;
-        if (remainingMax === 0) runsWeekPrompt += ` Plus aucune séance de course n'est à ajouter cette semaine : jours restants en Repos ou cross-training, et la séance recommandée (champs headline, type, nextDay...) est la première de la semaine suivante.`;
       } else {
         runsWeekPrompt += ` Sur les jours restants, ne dépasse jamais le maximum hebdomadaire des PRÉFÉRENCES (séances déjà faites comprises) et ne planifie que les séances utiles.`;
       }
@@ -722,7 +731,7 @@ export async function runAnalysis(params) {
       ? `{"niveau":"string (ex: Intermédiaire, Bon, En reprise)","tendance":"string (ex: En progression, Stable, En baisse)","acquis":["string","string","string"],"atravailler":["string","string","string"],"priorites":["string","string","string"],"verdict":"continuer"|"ameliorer"|"downgrade","verdictDetail":"string (2-3 phrases honnêtes sur l'objectif)","confidence":75}`
       : `{"headline":"string (3 mots max)","type":"string (zone de la séance)","zone":"string (ex: SV2 · FC 158-162)","goal":"string (1 phrase)","success":"string (1 critère mesurable)","structure":[{"phase":"Échauffement","detail":"string","pace":"string","hr":"string"},{"phase":"Corps de séance","detail":"string","pace":"string","hr":"string"},{"phase":"Retour au calme","detail":"string","pace":"string","hr":"string"}],"distance":"string (ex: 12 km)","dplus":"string (ex: 400 m, ou '' si plat)","duration":"string (ex: 1h10)","pace":"string (fourchette du corps de séance)","hr":"string","rpe":"string","tip":"string (1 phrase)","before":"string","during":"string","after":"string","gear":"string","why":"string (2-3 phrases)","weekLogic":"string (1 phrase)","confidence":75,"nextDay":"Lundi","week":[{"day":"Lun","session":"string","detail":"string","color":"#hex","done":false},{"day":"Mar","session":"string","detail":"string","color":"#hex","done":false},{"day":"Mer","session":"string","detail":"string","color":"#hex","done":false},{"day":"Jeu","session":"string","detail":"string","color":"#hex","done":false},{"day":"Ven","session":"string","detail":"string","color":"#hex","done":false},{"day":"Sam","session":"string","detail":"string","color":"#hex","done":false},{"day":"Dim","session":"string","detail":"string","color":"#hex","done":false}]}`;
 
-    const weekRules = ` RÈGLES week[] : contient TOUJOURS EXACTEMENT 7 entrées, dans l'ordre Lun, Mar, Mer, Jeu, Ven, Sam, Dim (semaine en cours, du lundi ${mondayStr} au dimanche). Chaque entrée a "day", "session", "detail", "color", "done". "detail" : UNE ligne qui dit concrètement ce que sera la séance, avec allures et FC du profil (ex. "20' EF, 3x10' seuil 4'40\"-4'50\" FC 158-162, récup 2'30\" trot, 10' retour au calme" ou "10 km EF 6'00\"-6'45\" FC < 140 + 6 lignes droites") ; pour une séance déjà faite, ce qui a été réalisé d'après l'analyse ; "" pour Repos. Format de "session" pour une course : la zone puis la distance, court, ex. "Seuil 10km", "VMA 9km", "EF 10km", "EF + LD 10km", "Récup 6km", "Allure marathon 12km", "SL 18km", "SL 18km dont AM", "Côtes 8km". Jours sans course : "session":"Repos" (ou le cross-training prévu), "color":"#374151", "done":false. "done":true UNIQUEMENT pour les séances déjà réalisées cette semaine. Couleurs : EF/Récup "#60a5fa" · Seuil/Allure spécifique "#fbbf24" · VMA/Fractionné "#f87171" · Côtes "#34d399" · Sortie longue "#a78bfa".`;
+    const weekRules = ` RÈGLES week[] : contient TOUJOURS EXACTEMENT 7 entrées, dans l'ordre Lun, Mar, Mer, Jeu, Ven, Sam, Dim (semaine ${planNext ? "SUIVANTE" : "en cours"}, du lundi ${planWeekStart} au dimanche). Chaque entrée a "day", "session", "detail", "color", "done". "detail" : UNE ligne qui dit concrètement ce que sera la séance, avec allures et FC du profil (ex. "20' EF, 3x10' seuil 4'40\"-4'50\" FC 158-162, récup 2'30\" trot, 10' retour au calme" ou "10 km EF 6'00\"-6'45\" FC < 140 + 6 lignes droites") ; pour une séance déjà faite, ce qui a été réalisé d'après l'analyse ; "" pour Repos. Format de "session" pour une course : la zone puis la distance, court, ex. "Seuil 10km", "VMA 9km", "EF 10km", "EF + LD 10km", "Récup 6km", "Allure marathon 12km", "SL 18km", "SL 18km dont AM", "Côtes 8km". Jours sans course : "session":"Repos" (ou le cross-training prévu), "color":"#374151", "done":false. "done":true UNIQUEMENT pour les séances déjà réalisées cette semaine. Couleurs : EF/Récup "#60a5fa" · Seuil/Allure spécifique "#fbbf24" · VMA/Fractionné "#f87171" · Côtes "#34d399" · Sortie longue "#a78bfa".`;
 
     const baseIdentity = `Tu es un coach de course à pied expert (route et trail). Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : ${RUNNER.identity} · cycle centré sur la course à pied, avec du vélo, de la natation et de la musculation en complément occasionnel.`;
 
@@ -776,8 +785,9 @@ export async function runAnalysis(params) {
     return reply(200, {
       savedAt: Date.now(),
       result,
-      weekStart: mondayStr,
-      weekDoneKm,
+      weekStart: planWeekStart,
+      planNext,
+      weekDoneKm: planNext ? null : weekDoneKm,
       weekDoneDplus,
       weekCharge,
       volume,
