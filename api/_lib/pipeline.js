@@ -28,7 +28,8 @@ function plannedFor(iso, prevBody) {
   // 2) sinon la ligne du programme de la semaine
   if (prevBody.weekStart === mondayOf(iso) && Array.isArray(r.week)) {
     const w = r.week.find((x) => x.day === ABBR[dIdx]);
-    if (w && w.session && !/^repos/i.test(w.session)) return `${w.session}${w.detail ? " : " + w.detail : ""}`;
+    // Une entrée déjà marquée faite décrit le réalisé, pas le prévu
+    if (w && w.session && !w.done && !/^repos/i.test(w.session)) return `${w.session}${w.detail ? " : " + w.detail : ""}`;
   }
   return "";
 }
@@ -61,12 +62,14 @@ export async function runPipeline(options) {
     const iso = (act.start_date_local || act.start_date || "").slice(0, 10);
     const settings = (await getJSON(KEYS.settings)) || {};
     const prev = await getJSON(KEYS.result);
-    // Si cette séance a déjà été analysée, on garde la séance prévue d'origine
-    // (le programme a pu être régénéré entre-temps)
-    const prevLast = await getJSON(KEYS.last);
-    const planned = prevLast && prevLast.body && String(prevLast.body.activityId) === String(activityId) && prevLast.body.planned != null
-      ? prevLast.body.planned
-      : plannedFor(iso, prev && prev.body);
+    // La séance prévue est figée au premier passage : si l'analyse échoue et qu'on
+    // la relance, le programme a déjà été régénéré et ne dit plus ce qui était prévu.
+    const plannedKey = `mc:planned:${activityId}`;
+    let planned = await getJSON(plannedKey).catch(() => null);
+    if (planned == null) {
+      planned = plannedFor(iso, prev && prev.body);
+      await setJSON(plannedKey, planned).catch(() => {});
+    }
     const run = isRunAct(act);
 
     const [lastOut, nextOut] = await Promise.all([
