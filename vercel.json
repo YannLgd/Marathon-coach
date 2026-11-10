@@ -2,6 +2,8 @@
   "outputDirectory": "public",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" }
+  ],
+  "crons": [
+    { "path": "/api/cron-morning", "schedule": "0 6 * * *" }
   ]
 }
-
