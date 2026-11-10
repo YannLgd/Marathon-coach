@@ -71,8 +71,9 @@
    On purge les caches et l'ancien objectif chrono marathon.
    v6 : séances détaillées (déroulé, objectif, critère) + logique de semaine.
    v7 : fiche coureur (lecture seule) + détail des séances de la semaine au toucher.
+   v8 : synchronisation serveur (clé de l'app, résultats et réglages gardés côté serveur).
    ============================================================ */
-const APP_VERSION = 7;
+const APP_VERSION = 8;
 (function migrate() {
   const v = parseInt(localStorage.getItem('mc_app_version') || '1', 10);
   if (v < 3) {
@@ -168,8 +169,8 @@ function todayMondayBasedIndex() {
 }
 
 // Cache helpers
-function saveCache(result) {
-  localStorage.setItem("mc_last_result", JSON.stringify({ result, savedAt: Date.now() }));
+function saveCache(result, savedAt) {
+  localStorage.setItem("mc_last_result", JSON.stringify({ result, savedAt: savedAt || Date.now() }));
 }
 function loadCache() {
   try { return JSON.parse(localStorage.getItem("mc_last_result") || "null"); } catch { return null; }
@@ -208,8 +209,8 @@ function loadConfidence() {
   const v = localStorage.getItem("mc_confidence");
   return v !== null ? parseInt(v) : null;
 }
-function saveBilan(result) {
-  localStorage.setItem("mc_last_bilan", JSON.stringify({ result, savedAt: Date.now() }));
+function saveBilan(result, savedAt) {
+  localStorage.setItem("mc_last_bilan", JSON.stringify({ result, savedAt: savedAt || Date.now() }));
 }
 function loadBilan() {
   try { return JSON.parse(localStorage.getItem("mc_last_bilan") || "null"); } catch { return null; }
@@ -232,6 +233,78 @@ function saveWeekDone(km) {
 function loadWeekDone() {
   const v = localStorage.getItem("mc_week_done_km");
   return v !== null ? parseFloat(v) : null;
+}
+
+/* ---------------- Serveur : clé de l'app et synchronisation ---------------- */
+function getAppKey() { return localStorage.getItem("mc_app_key"); }
+function appHeaders(extra) {
+  const hd = Object.assign({ "Content-Type": "application/json" }, extra || {});
+  const k = getAppKey();
+  if (k) hd["x-app-key"] = k;
+  return hd;
+}
+// Statut affiché en bas de l'accueil : ok | off | err | null (pas de clé)
+function syncStatus() { return getAppKey() ? (localStorage.getItem("mc_sync") || "?") : null; }
+
+// Enregistre localement le résultat d'une analyse (bouton ou synchro serveur)
+function applyAnalysisData(data) {
+  if (!data || !data.result) return;
+  const savedAt = data.savedAt || Date.now();
+  if (data.activities) saveActivities(data.activities);
+  if (data.volume) saveVolume(data.volume);
+  if (data.runner) saveRunner(data.runner);
+  saveWeekDone(data.weekDoneKm);
+  // L'indice de confiance n'a de sens que rapporté à un objectif
+  if (hasObjective() && data.result.confidence !== undefined) saveConfidence(data.result.confidence);
+  else localStorage.removeItem('mc_confidence');
+  if (data.result._mode === 'bilan') {
+    // Isolation d'état : le bilan ne touche JAMAIS state.result ni mc_last_result
+    saveBilan(data.result, savedAt);
+  } else {
+    if (data.result.week) saveWeeklyPlan(data.result.week);
+    saveWeekLogic(data.result.weekLogic);
+    saveWeekStart(data.weekStart || getMondayStr());
+    saveCache(data.result, savedAt);
+  }
+}
+
+// Récupère les analyses plus récentes faites côté serveur
+async function syncFromServer() {
+  if (!getAppKey()) return;
+  try {
+    const r = await fetch("/api/state", { headers: appHeaders() });
+    if (r.status === 401 || r.status === 503) { localStorage.setItem("mc_sync", "off"); if (state.view === 'home') render(); return; }
+    if (!r.ok) throw new Error(String(r.status));
+    const d = await r.json();
+    let changed = false;
+    const lc = loadCache();
+    if (d.result && d.result.body && (!lc || (d.result.savedAt || 0) > (lc.savedAt || 0))) {
+      applyAnalysisData(d.result.body);
+      state.result = d.result.body.result;
+      state.savedAt = d.result.body.savedAt || d.result.savedAt;
+      changed = true;
+    }
+    const lb = loadBilan();
+    if (d.bilan && d.bilan.body && (!lb || (d.bilan.savedAt || 0) > (lb.savedAt || 0))) {
+      saveBilan(d.bilan.body.result, d.bilan.body.savedAt || d.bilan.savedAt);
+      changed = true;
+    }
+    localStorage.setItem("mc_sync", d.stravaLinked ? "ok" : "off");
+    if (changed || state.view === 'home') render();
+  } catch (e) {
+    localStorage.setItem("mc_sync", "err");
+  }
+}
+
+// Envoie objectif et préférences au serveur (pour les futures analyses automatiques)
+function pushSettings() {
+  if (!getAppKey()) return;
+  const prefs = loadPrefs();
+  fetch("/api/state", {
+    method: "POST",
+    headers: appHeaders(),
+    body: JSON.stringify({ objective: loadObjective(), prefsPrompt: getPrefsPrompt(prefs), maxSessions: prefs.sessions }),
+  }).catch(function() {});
 }
 
 // Jours écoulés depuis le dernier run
@@ -391,7 +464,7 @@ function showDisconnectConfirm() {
     sub: 'Ton historique d\'analyse sera effacé. Ton objectif et tes préférences sont conservés.',
     okLabel: 'Déconnecter',
     onConfirm: function() {
-      ['mc_auth','mc_last_result','mc_weekly_plan','mc_week_logic','mc_week_start','mc_confidence','mc_pending_comment',
+      ['mc_auth','mc_app_key','mc_sync','mc_last_result','mc_weekly_plan','mc_week_logic','mc_week_start','mc_confidence','mc_pending_comment',
        'mc_last_bilan','mc_last_activities','mc_volume_history','mc_week_done_km']
         .forEach(function(k) { localStorage.removeItem(k); });
       setState({ auth: null, result: null, savedAt: null, view: 'login' });
@@ -444,6 +517,7 @@ function handleOAuthParams() {
   const params = new URLSearchParams(window.location.search);
   if (params.get("access_token")) {
     saveAuth({ access_token: params.get("access_token"), refresh_token: params.get("refresh_token"), expires_at: parseInt(params.get("expires_at")), athlete_name: params.get("athlete_name") });
+    if (params.get("app_key")) { localStorage.setItem("mc_app_key", params.get("app_key")); localStorage.removeItem("mc_sync"); }
     window.history.replaceState({}, "", "/");
   }
 }
@@ -463,33 +537,26 @@ async function analyze(mode, extra, comment) {
   if (!comment) comment = "";
   setState({ loading:true, error:null, view:"loading", lastAction:{ mode:mode, extra:extra, comment:comment } });
   try {
-    const token = await getValidToken();
-    if (!token) { setState({ loading:false, view:"login" }); return; }
+    // Avec la clé de l'app, le serveur utilise sa propre connexion Strava :
+    // l'app ne rafraîchit plus ses jetons (sinon les deux se désynchronisent).
+    let token = null;
+    if (!getAppKey()) {
+      token = await getValidToken();
+      if (!token) { setState({ loading:false, view:"login" }); return; }
+    }
     const prefs = loadPrefs();
     const prefsPrompt = getPrefsPrompt(prefs);
-    const res = await fetch("/api/analyze", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ access_token:token, mode:mode, extra:extra, prefsPrompt:prefsPrompt, maxSessions:prefs.sessions, comment:comment, objective:loadObjective() }) });
+    const res = await fetch("/api/analyze", { method:"POST", headers:appHeaders(), body:JSON.stringify({ access_token:token, mode:mode, extra:extra, prefsPrompt:prefsPrompt, maxSessions:prefs.sessions, comment:comment, objective:loadObjective() }) });
     const data = await res.json();
     if (!res.ok || !data.result) throw new Error(data.error || "Erreur serveur");
 
-    if (data.activities) saveActivities(data.activities);
-    if (data.volume) saveVolume(data.volume);
-    if (data.runner) saveRunner(data.runner);
-    saveWeekDone(data.weekDoneKm);
-    // L'indice de confiance n'a de sens que rapporté à un objectif
-    if (hasObjective() && data.result.confidence !== undefined) saveConfidence(data.result.confidence);
-    else localStorage.removeItem('mc_confidence');
+    applyAnalysisData(data);
     localStorage.removeItem('mc_pending_comment');
 
     if (data.result._mode === 'bilan') {
-      saveBilan(data.result);
-      // Isolation d'état : le bilan ne touche JAMAIS state.result ni mc_last_result
       setState({ loading:false, view:"bilan" });
     } else {
-      if (data.result.week) saveWeeklyPlan(data.result.week);
-      saveWeekLogic(data.result.weekLogic);
-      saveWeekStart(data.weekStart || getMondayStr());
-      saveCache(data.result);
-      setState({ loading:false, result:data.result, savedAt:Date.now(), view:"result" });
+      setState({ loading:false, result:data.result, savedAt:data.savedAt || Date.now(), view:"result" });
     }
   } catch(e) { setState({ loading:false, error:e.message, view:"error" }); }
 }
@@ -775,7 +842,13 @@ function renderHome() {
     style:{width:'100%',padding:'12px',background:'transparent',border:'1px dashed #334155',borderRadius:'12px',color:'#8b9ab3',fontSize:'12px',marginTop:'4px'}
   }, 'Deconnecter Strava'));
 
-  children.push(h('div', {style:{textAlign:'center',fontSize:'9px',color:'#7a889f',marginTop:'10px'}}, 'Coach · v' + APP_VERSION));
+  const sync = syncStatus();
+  const syncTxt = sync === null ? ' · serveur non relié : déconnecte puis reconnecte Strava'
+    : sync === 'ok' ? ' · serveur ✓'
+    : sync === 'off' ? ' · serveur indisponible : reconnecte Strava'
+    : sync === 'err' ? ' · serveur injoignable'
+    : ' · serveur…';
+  children.push(h('div', {style:{textAlign:'center',fontSize:'9px',color: sync === 'ok' ? '#7a889f' : '#a3afc2',marginTop:'10px',lineHeight:'1.5'}}, 'Coach · v' + APP_VERSION + syncTxt));
 
   return h.apply(null, ['div', {class:'fade',style:{padding:'20px 18px'}}].concat(children));
 }
@@ -929,6 +1002,7 @@ function renderObjective() {
       dplus: draft.dplus,
       targetTime: draft.targetTime,
     });
+    pushSettings();
     invalidateObjectiveCaches();
     setState({ view: 'home' });
   };
@@ -947,6 +1021,7 @@ function renderObjective() {
         okLabel: 'Supprimer',
         onConfirm: function() {
           clearObjective();
+          pushSettings();
           invalidateObjectiveCaches();
           setState({ view: 'home' });
         }
@@ -1062,6 +1137,7 @@ function renderPrefs() {
   saveBtn.style.cssText = 'width:100%;padding:16px;background:#7c3aed;color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;';
   saveBtn.onclick = function() {
     savePrefsData({ sessions: draft.sessions, days: draft.days });
+    pushSettings();
     saveBtn.textContent = '✓ Sauvegarde !';
     saveBtn.style.background = '#059669';
     setTimeout(function() { saveBtn.textContent = '✓ Sauvegarder'; saveBtn.style.background = '#7c3aed'; }, 1800);
@@ -1374,6 +1450,7 @@ function render() {
 handleOAuthParams();
 if (!state.auth) state.view = 'login';
 render();
+if (state.auth) syncFromServer();
 </script>
 </body>
 </html>
