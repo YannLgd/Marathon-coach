@@ -4,6 +4,19 @@
 
 import { runAnalysis, runLastSessionAnalysis, getActivity, getLatestActivities, isRunAct } from "./coach.js";
 import { KEYS, getJSON, setJSON, getStravaToken } from "./store.js";
+import { sendPush } from "./notify.js";
+
+// Notification de fin de traitement (uniquement pour la détection automatique :
+// en manuel, tu es déjà dans l'app)
+async function notifyDone(source, payload) {
+  if (source !== "webhook") return;
+  try { await sendPush(payload); } catch (e) { /* jamais bloquant */ }
+}
+function nextTxt(result) {
+  const r = result && result.result;
+  if (!r || !r.type) return "";
+  return `Prochaine : ${r.type}${r.nextDay ? " " + String(r.nextDay).toLowerCase() : ""}`;
+}
 
 const ABBR = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 const FULL = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -104,10 +117,34 @@ export async function runPipeline(options) {
         ok: errors.length === 0, error: errors.join(" · ") || null, durationS: Math.round((Date.now() - t0) / 1000),
       },
     });
+    if (last && last.analysis) {
+      const a = last.analysis;
+      await notifyDone(source, {
+        title: "Ta séance a été analysée",
+        body: `${a.title || "Séance"} · ${a.verdictLabel || ""}${result ? ". " + nextTxt(result) : ""}`,
+        url: "/?view=last",
+        tag: `analyse-${activityId}`,
+      });
+    } else if (!run && result) {
+      await notifyDone(source, {
+        title: "Activité prise en compte",
+        body: `Programme mis à jour. ${nextTxt(result)}`,
+        url: "/?view=result",
+        tag: `analyse-${activityId}`,
+      });
+    } else if (errors.length) {
+      await notifyDone(source, {
+        title: "Analyse de ta séance incomplète",
+        body: "Ouvre l'app et touche « Analyser la séance » pour relancer.",
+        url: "/",
+        tag: `analyse-${activityId}`,
+      });
+    }
     return { ok: errors.length === 0, last, result, error: errors.join(" · ") || null };
   } catch (e) {
     const msg = e && e.message ? e.message : String(e);
     await setStatus({ lastPipeline: { at: Date.now(), source, activityId: activityId || null, ok: false, error: msg, durationS: Math.round((Date.now() - t0) / 1000) } });
+    await notifyDone(source, { title: "Analyse de ta séance impossible", body: "Ouvre l'app : l'écran d'état indique le problème.", url: "/", tag: `analyse-${activityId || "x"}` });
     return { ok: false, last: null, result: null, error: msg };
   }
 }
