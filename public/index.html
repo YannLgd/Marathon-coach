@@ -72,8 +72,9 @@
    v6 : séances détaillées (déroulé, objectif, critère) + logique de semaine.
    v7 : fiche coureur (lecture seule) + détail des séances de la semaine au toucher.
    v8 : synchronisation serveur (clé de l'app, résultats et réglages gardés côté serveur).
+   v9 : analyse de la dernière séance, détection automatique (webhook Strava), écran d'état.
    ============================================================ */
-const APP_VERSION = 8;
+const APP_VERSION = 9;
 (function migrate() {
   const v = parseInt(localStorage.getItem('mc_app_version') || '1', 10);
   if (v < 3) {
@@ -195,6 +196,17 @@ function saveRunner(r) {
 function loadRunner() {
   try { return JSON.parse(localStorage.getItem("mc_runner") || "null"); } catch { return null; }
 }
+// Analyse de la dernière séance { body, savedAt } et état du coach automatique
+function saveLast(body) {
+  if (body) localStorage.setItem("mc_last_session", JSON.stringify({ body: body, savedAt: body.savedAt || Date.now() }));
+}
+function loadLast() {
+  try { return JSON.parse(localStorage.getItem("mc_last_session") || "null"); } catch { return null; }
+}
+function saveStatus(st) { if (st) localStorage.setItem("mc_status", JSON.stringify(st)); }
+function loadStatus() {
+  try { return JSON.parse(localStorage.getItem("mc_status") || "null"); } catch { return null; }
+}
 // Semaine (lundi) à laquelle correspond le cache mc_last_result / mc_weekly_plan actuel
 function saveWeekStart(weekStart) {
   if (weekStart) localStorage.setItem("mc_week_start", weekStart);
@@ -284,6 +296,12 @@ async function syncFromServer() {
       state.savedAt = d.result.body.savedAt || d.result.savedAt;
       changed = true;
     }
+    const ll = loadLast();
+    if (d.last && d.last.body && (!ll || (d.last.savedAt || 0) > (ll.savedAt || 0))) {
+      saveLast(d.last.body);
+      changed = true;
+    }
+    if (d.status) saveStatus(d.status);
     const lb = loadBilan();
     if (d.bilan && d.bilan.body && (!lb || (d.bilan.savedAt || 0) > (lb.savedAt || 0))) {
       saveBilan(d.bilan.body.result, d.bilan.body.savedAt || d.bilan.savedAt);
@@ -464,7 +482,7 @@ function showDisconnectConfirm() {
     sub: 'Ton historique d\'analyse sera effacé. Ton objectif et tes préférences sont conservés.',
     okLabel: 'Déconnecter',
     onConfirm: function() {
-      ['mc_auth','mc_app_key','mc_sync','mc_last_result','mc_weekly_plan','mc_week_logic','mc_week_start','mc_confidence','mc_pending_comment',
+      ['mc_auth','mc_app_key','mc_sync','mc_last_session','mc_status','mc_last_result','mc_weekly_plan','mc_week_logic','mc_week_start','mc_confidence','mc_pending_comment',
        'mc_last_bilan','mc_last_activities','mc_volume_history','mc_week_done_km']
         .forEach(function(k) { localStorage.removeItem(k); });
       setState({ auth: null, result: null, savedAt: null, view: 'login' });
@@ -558,6 +576,22 @@ async function analyze(mode, extra, comment) {
     } else {
       setState({ loading:false, result:data.result, savedAt:data.savedAt || Date.now(), view:"result" });
     }
+  } catch(e) { setState({ loading:false, error:e.message, view:"error" }); }
+}
+
+// Bouton « Analyser ma dernière séance » (même traitement que la détection automatique)
+async function analyzeLastNow() {
+  if (!getAppKey()) { setState({ error:"Le serveur n'est pas relié : déconnecte puis reconnecte Strava.", view:"error", lastAction:null }); return; }
+  setState({ loading:true, error:null, view:"loading", lastAction:null });
+  try {
+    const res = await fetch("/api/last", { method:"POST", headers:appHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Erreur serveur");
+    if (data.result) applyAnalysisData(data.result);
+    if (data.last) saveLast(data.last);
+    if (data.result) { state.result = data.result.result; state.savedAt = data.result.savedAt; }
+    if (data.last) setState({ loading:false, view:"last" });
+    else setState({ loading:false, error:(data.error || "La dernière activité n'est pas une course : programme mis à jour, pas d'analyse détaillée."), view:"error" });
   } catch(e) { setState({ loading:false, error:e.message, view:"error" }); }
 }
 
@@ -730,6 +764,7 @@ function renderHome() {
   const o = loadObjective();
 
   const btns = [
+    {id:'last',   icon:'🔬',label:'Analyser ma derniere seance',sub:'Prevu vs realise · utilise des tokens'},
     {id:'session',icon:'⚡',label:'Ma prochaine seance',sub:'Analyse Strava · utilise des tokens'},
     {id:'week',   icon:'📅',label:'Prochaine semaine',  sub:'Programme 7 jours · utilise des tokens'},
     {id:'fatigue',icon:'😮',label:'Je suis fatigue',    sub:'Reduire la charge · utilise des tokens'},
@@ -741,6 +776,19 @@ function renderHome() {
     h('div', {style:{fontSize:'14px',fontWeight:'700',color:'#e2e8f0',marginBottom:'3px'}}, 'Bonjour ' + name + ' 👋'),
     !cache ? h('div', {style:{fontSize:'12px',color:'#a3afc2',marginBottom:'16px'}}, 'Lance une analyse pour obtenir ta premiere seance.') : null
   ];
+
+  const lastS = loadLast();
+  if (lastS && lastS.body && lastS.body.analysis) {
+    const a = lastS.body.analysis;
+    const vc = verdictColor(a.verdict);
+    children.push(h('div', {
+      onclick: function() { setState({ view:'last' }); },
+      style:{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#0e1118',borderRadius:'12px',padding:'12px 14px',border:'1px solid '+vc+'40',cursor:'pointer',marginTop:'10px'}},
+      h('div', null,
+        h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, 'Derniere seance · ' + fmtShortDate(lastS.body.date)),
+        h('div', {style:{fontSize:'13px',fontWeight:'700',color:'#e2e8f0'}}, (a.title || 'Séance') + ' · ', h('span', {style:{color:vc}}, a.verdictLabel || ''))),
+      h('span', {style:{color:'#7a889f',fontSize:'16px'}}, '>')));
+  }
 
   const noRunDays = daysSinceLastRun();
   if (noRunDays !== null && noRunDays >= 4) {
@@ -757,6 +805,7 @@ function renderHome() {
     children.push(h('button', {
       onclick: function() {
         if (b.id === 'cross') setState({view:'cross'});
+        else if (b.id === 'last') analyzeLastNow();
         else analyzeWithComment(b.id);
       },
       style:{width:'100%',display:'flex',alignItems:'center',gap:'14px',background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'16px',marginBottom:'9px',color:'#e2e8f0',textAlign:'left'}},
@@ -848,7 +897,7 @@ function renderHome() {
     : sync === 'off' ? ' · serveur indisponible : reconnecte Strava'
     : sync === 'err' ? ' · serveur injoignable'
     : ' · serveur…';
-  children.push(h('div', {style:{textAlign:'center',fontSize:'9px',color: sync === 'ok' ? '#7a889f' : '#a3afc2',marginTop:'10px',lineHeight:'1.5'}}, 'Coach · v' + APP_VERSION + syncTxt));
+  children.push(h('div', {onclick: function() { openStatus(); }, style:{textAlign:'center',fontSize:'9px',color: sync === 'ok' ? '#7a889f' : '#a3afc2',marginTop:'10px',lineHeight:'1.5',cursor:'pointer'}}, 'Coach · v' + APP_VERSION + syncTxt + ' · état ›'));
 
   return h.apply(null, ['div', {class:'fade',style:{padding:'20px 18px'}}].concat(children));
 }
@@ -1192,6 +1241,133 @@ function renderCross() {
     h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'transparent',border:'1px solid #1a2035',color:'#a3afc2',fontSize:'13px'}}, '← Retour'));
 }
 
+/* ---------------- Dernière séance ---------------- */
+function verdictColor(v) {
+  return { reussie:'#34d399', partielle:'#fbbf24', ratee:'#f87171', libre:'#a78bfa' }[v] || '#a78bfa';
+}
+function fmtShortDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + 'T12:00:00');
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'short' });
+}
+function fmtDateTime(ts) {
+  if (!ts) return '-';
+  return new Date(ts).toLocaleString('fr-FR', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+}
+
+function renderLast() {
+  const L = loadLast();
+  if (!L || !L.body || !L.body.analysis) return renderHome();
+  const b = L.body, a = b.analysis;
+  const vc = verdictColor(a.verdict);
+  const has = function(v){ return v && String(v).trim(); };
+  const title = function(t) { return h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'8px',fontWeight:'700'}}, t); };
+  const card = function() { return h.apply(null, ['div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}}].concat(Array.prototype.slice.call(arguments))); };
+  const bullets = function(items, color) {
+    return (items || []).map(function(t) {
+      return h('div', {style:{display:'flex',gap:'8px',alignItems:'flex-start',marginBottom:'6px'}},
+        h('div', {style:{width:'5px',height:'5px',borderRadius:'50%',background:color,flexShrink:'0',marginTop:'6px'}}),
+        h('div', {style:{fontSize:'12px',color:'#c4cdd8',lineHeight:'1.5'}}, t));
+    });
+  };
+
+  const nums = (a.keyNumbers || []).map(function(n) {
+    return h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'12px',borderBottom:'2px solid '+vc+'35'}},
+      h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'5px',fontWeight:'700'}}, n.label),
+      h('div', {style:{fontSize:'15px',fontWeight:'800',color:'#e2e8f0',lineHeight:'1.2'}}, n.value));
+  });
+
+  return h('div', {class:'fade',style:{padding:'20px 18px'}},
+    h('div', {style:{fontSize:'10px',color:'#7a889f',marginBottom:'10px',textAlign:'right'}},
+      'Analyse ' + (b.source === 'webhook' ? 'automatique' : 'manuelle') + ' · il y a ' + formatAge(L.savedAt)),
+    h('div', {style:{background:'linear-gradient(135deg,#1a0f35,#0d1a35)',borderRadius:'16px',padding:'20px 18px',marginBottom:'10px',border:'1px solid #2a1f4a'}},
+      h('div', {style:{fontSize:'9px',color:'#a3afc2',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'5px',fontWeight:'700'}}, 'Derniere seance · ' + fmtShortDate(b.date)),
+      h('div', {style:{fontSize:'22px',fontWeight:'900',color:'#fff',letterSpacing:'-0.5px',marginBottom:'8px'}}, a.title || 'Séance'),
+      h('span', {style:{display:'inline-block',fontSize:'12px',fontWeight:'800',color:vc,background:vc+'20',border:'1px solid '+vc+'45',borderRadius:'8px',padding:'5px 10px'}}, a.verdictLabel || a.verdict || ''),
+      has(a.summary) ? h('div', {style:{fontSize:'13px',color:'#c4cdd8',lineHeight:'1.5',marginTop:'12px'}}, a.summary) : null),
+    (has(a.planned) || has(a.done)) ? card(
+      has(a.planned) ? h('div', {style:{marginBottom: has(a.done) ? '10px' : '0'}},
+        h('div', {style:{fontSize:'10px',color:'#8b9ab3',fontWeight:'700',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'4px'}}, 'Prévu'),
+        h('div', {style:{fontSize:'12px',color:'#a3afc2',lineHeight:'1.5'}}, a.planned)) : null,
+      has(a.done) ? h('div', null,
+        h('div', {style:{fontSize:'10px',color:vc,fontWeight:'700',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'4px'}}, 'Réalisé'),
+        h('div', {style:{fontSize:'13px',color:'#e2e8f0',lineHeight:'1.5'}}, a.done)) : null) : null,
+    nums.length ? h.apply(null, ['div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'10px'}}].concat(nums)) : null,
+    (a.blocks && a.blocks.length) ? card(title('Déroulé réel'),
+      a.blocks.map(function(bl, i) {
+        return h('div', {style:{display:'flex',gap:'10px',padding:'7px 0',borderBottom: i < a.blocks.length - 1 ? '1px solid #1a2035' : 'none'}},
+          h('div', {style:{fontSize:'11px',color:vc,fontWeight:'800',minWidth:'70px',flexShrink:'0'}}, bl.label),
+          h('div', {style:{fontSize:'12px',color:'#e2e8f0',lineHeight:'1.5'}}, bl.detail));
+      })) : null,
+    has(a.hr) ? card(title('Fréquence cardiaque'), h('div', {style:{fontSize:'12px',color:'#c4cdd8',lineHeight:'1.6'}}, a.hr)) : null,
+    has(a.fatigue) ? card(title('Forme et fatigue'), h('div', {style:{fontSize:'12px',color:'#c4cdd8',lineHeight:'1.6'}}, a.fatigue)) : null,
+    (a.positives && a.positives.length) ? card(title('✅ Points positifs'), bullets(a.positives, '#34d399')) : null,
+    (a.improve && a.improve.length) ? card(title('⚠️ À améliorer'), bullets(a.improve, '#fbbf24')) : null,
+    has(a.impact) ? h('div', {style:{background:'#080b10',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px',border:'1px dashed #334155'}},
+      title('Pour la suite'), h('div', {style:{fontSize:'12px',color:'#a3afc2',lineHeight:'1.6'}}, a.impact)) : null,
+    (state.result || loadCache()) ? h('button', {onclick:function(){ const r = state.result || (loadCache() ? loadCache().result : null); setState({ result:r, view:'result' }); },style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#1a0f35',border:'1px solid #7c3aed55',color:'#a78bfa',fontSize:'13px',fontWeight:'700',marginBottom:'10px'}}, 'Voir la prochaine seance ›') : null,
+    h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#a3afc2',fontSize:'13px',fontWeight:'600'}}, '← Retour'));
+}
+
+/* ---------------- État du coach automatique ---------------- */
+async function openStatus() {
+  setState({ view:'status', hook:null, hookError:null });
+  if (!getAppKey()) return;
+  await syncFromServer();
+  try {
+    const r = await fetch('/api/hook', { headers: appHeaders() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Erreur');
+    if (state.view === 'status') setState({ hook:d });
+  } catch(e) { if (state.view === 'status') setState({ hookError:e.message }); }
+}
+async function setHook(method) {
+  setState({ hook:null, hookError:null });
+  try {
+    const r = await fetch('/api/hook', { method: method, headers: appHeaders() });
+    const d = await r.json();
+    if (!r.ok) throw new Error((d.error || 'Erreur') + (d.detail ? ' : ' + JSON.stringify(d.detail).slice(0, 200) : ''));
+    setState({ hook:d });
+  } catch(e) { setState({ hookError:e.message }); }
+}
+
+function renderStatus() {
+  const st = loadStatus() || {};
+  const key = !!getAppKey();
+  const sync = syncStatus();
+  const lineEl = function(label, value, color) {
+    return h('div', {style:{display:'flex',justifyContent:'space-between',gap:'12px',padding:'9px 0',borderBottom:'1px solid #1a2035'}},
+      h('div', {style:{fontSize:'12px',color:'#a3afc2'}}, label),
+      h('div', {style:{fontSize:'12px',color:color || '#e2e8f0',fontWeight:'700',textAlign:'right'}}, value));
+  };
+  const hook = state.hook;
+  const hookTxt = !key ? 'serveur non relié' : state.hookError ? 'erreur' : hook == null ? 'vérification…' : hook.active ? 'active ✓' : 'inactive';
+  const hookColor = hook && hook.active ? '#34d399' : state.hookError ? '#f87171' : '#fbbf24';
+  const lp = st.lastPipeline;
+  const back = h('div', {style:{display:'flex',alignItems:'center',gap:'12px',marginBottom:'16px'}},
+    h('button', {onclick:function(){ setState({view:'home'}); }, style:{background:'none',border:'none',color:'#7c3aed',fontSize:'22px',cursor:'pointer',padding:'0',lineHeight:'1'}}, '←'),
+    h('div', {style:{fontSize:'16px',fontWeight:'800',color:'#e2e8f0'}}, '🩺 État du coach'));
+
+  return h('div', {class:'fade',style:{padding:'20px 18px'}},
+    back,
+    h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'6px 16px 2px',marginBottom:'10px'}},
+      lineEl('Version de l\'app', 'v' + APP_VERSION),
+      lineEl('Serveur', sync === 'ok' ? 'relié ✓' : sync === null ? 'non relié' : sync === 'err' ? 'injoignable' : 'indisponible', sync === 'ok' ? '#34d399' : '#f87171'),
+      lineEl('Détection auto (Strava)', hookTxt, hookColor),
+      lineEl('Dernière activité reçue', st.lastEvent ? fmtDateTime(st.lastEvent.at) : 'aucune'),
+      lineEl('Dernière analyse', lp ? fmtDateTime(lp.at) + (lp.source === 'webhook' ? ' (auto)' : ' (manuelle)') : 'aucune'),
+      lineEl('Résultat', lp ? (lp.ok ? 'OK ✓' + (lp.durationS ? ' · ' + lp.durationS + ' s' : '') : 'échec') : '-', lp ? (lp.ok ? '#34d399' : '#f87171') : null),
+      lineEl('Notifications', 'à venir (étape 3)', '#8b9ab3')),
+    (lp && !lp.ok && lp.error) ? h('div', {style:{background:'#1a0a0a',border:'1px solid #3a1515',borderRadius:'12px',padding:'12px 14px',marginBottom:'10px',fontSize:'12px',color:'#fca5a5',lineHeight:'1.5',wordBreak:'break-word'}}, 'Dernière erreur : ' + lp.error) : null,
+    state.hookError ? h('div', {style:{background:'#1a0a0a',border:'1px solid #3a1515',borderRadius:'12px',padding:'12px 14px',marginBottom:'10px',fontSize:'12px',color:'#fca5a5',lineHeight:'1.5',wordBreak:'break-word'}}, state.hookError) : null,
+    (key && hook && !hook.active) ? h('button', {onclick:function(){ setHook('POST'); }, style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#7c3aed',color:'#fff',fontSize:'14px',fontWeight:'700',marginBottom:'10px'}}, '⚡ Activer la détection automatique') : null,
+    (key && hook && hook.active) ? h('div', {style:{fontSize:'11px',color:'#7a889f',lineHeight:'1.5',marginBottom:'10px',wordBreak:'break-all'}}, 'Strava prévient : ' + (hook.callbackUrl || '')) : null,
+    (key && hook && hook.active) ? h('button', {onclick:function(){ showConfirm({ icon:'⏸', title:'Désactiver la détection ?', sub:'Strava ne préviendra plus l\'app. Tu pourras la réactiver ici.', okLabel:'Désactiver', onConfirm:function(){ setHook('DELETE'); } }); }, style:{width:'100%',padding:'13px',borderRadius:'12px',background:'transparent',border:'1px solid #3a1515',color:'#f87171',fontSize:'12px',fontWeight:'700',marginBottom:'10px'}}, 'Désactiver la détection automatique') : null,
+    h('button', {onclick:function(){ openStatus(); }, style:{width:'100%',padding:'13px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#e2e8f0',fontSize:'13px',fontWeight:'600',marginBottom:'10px'}}, '↻ Rafraîchir'),
+    h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'transparent',border:'1px solid #1a2035',color:'#a3afc2',fontSize:'13px',fontWeight:'600'}}, '← Retour'));
+}
+
 /* ---------------- Fiche coureur (lecture seule) ---------------- */
 function renderRunner() {
   const r = loadRunner();
@@ -1442,7 +1618,7 @@ function render() {
   const app = document.getElementById('app');
   app.innerHTML = '';
   if (state.view !== 'login') app.appendChild(renderHeader());
-  const views = { home:renderHome, login:renderLogin, loading:renderLoading, error:renderError, cross:renderCross, result:renderResult, prefs:renderPrefs, objective:renderObjective, bilan:renderBilan, runner:renderRunner };
+  const views = { home:renderHome, login:renderLogin, loading:renderLoading, error:renderError, cross:renderCross, result:renderResult, prefs:renderPrefs, objective:renderObjective, bilan:renderBilan, runner:renderRunner, last:renderLast, status:renderStatus };
   app.appendChild((views[state.view]||renderHome)());
 }
 
