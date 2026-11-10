@@ -73,8 +73,10 @@
    v7 : fiche coureur (lecture seule) + détail des séances de la semaine au toucher.
    v8 : synchronisation serveur (clé de l'app, résultats et réglages gardés côté serveur).
    v9 : analyse de la dernière séance, détection automatique (webhook Strava), écran d'état.
+   v10 : accueil réorganisé (1 bouton principal + grille 2x2), bouton semaine supprimé,
+         programme de la semaine suivante le dimanche ou quand la semaine est terminée.
    ============================================================ */
-const APP_VERSION = 9;
+const APP_VERSION = 10;
 (function migrate() {
   const v = parseInt(localStorage.getItem('mc_app_version') || '1', 10);
   if (v < 3) {
@@ -265,7 +267,8 @@ function applyAnalysisData(data) {
   if (data.activities) saveActivities(data.activities);
   if (data.volume) saveVolume(data.volume);
   if (data.runner) saveRunner(data.runner);
-  saveWeekDone(data.weekDoneKm);
+  if (data.weekStart && data.weekStart !== getMondayStr()) localStorage.removeItem('mc_week_done_km');
+  else saveWeekDone(data.weekDoneKm);
   // L'indice de confiance n'a de sens que rapporté à un objectif
   if (hasObjective() && data.result.confidence !== undefined) saveConfidence(data.result.confidence);
   else localStorage.removeItem('mc_confidence');
@@ -545,7 +548,7 @@ function analyzeWithComment(mode, extra) {
   showCommentDialog(function(comment) { analyze(mode, extra, comment); });
 }
 
-// Point d'entrée des boutons "Ma prochaine seance" et "Prochaine semaine" :
+// Point d'entrée du bouton "Ma prochaine séance" (et des actions secondaires) :
 // on appelle toujours l'API. Avec temperature:0 côté serveur, une situation
 // identique (aucune nouvelle activité Strava) redonne le même résultat de
 // façon déterministe ; une nouvelle séance loggée fait évoluer la recommandation.
@@ -631,6 +634,22 @@ function confidenceColor(v) {
   return '#f87171';
 }
 
+/* ---------------- Semaine couverte par le programme ---------------- */
+// "current" | "next" | "past" | null
+function planWeekKind() {
+  const ws = loadWeekStart();
+  if (!ws) return null;
+  const cur = getMondayStr();
+  if (ws === cur) return 'current';
+  return ws > cur ? 'next' : 'past';
+}
+function planWeekTitle(base) {
+  const k = planWeekKind();
+  if (k === 'next') return 'Semaine prochaine';
+  if (k === 'past') return 'Semaine passée';
+  return base;
+}
+
 /* ---------------- Détail d'une séance de la semaine ---------------- */
 const DAY_FULL = { Lun:'Lundi', Mar:'Mardi', Mer:'Mercredi', Jeu:'Jeudi', Ven:'Vendredi', Sam:'Samedi', Dim:'Dimanche' };
 
@@ -649,7 +668,7 @@ function weekDetailPanel(week) {
     h('div', {style:{fontSize:'12px',fontWeight:'800',color:color,marginBottom:'5px'}},
       (DAY_FULL[w.day] || w.day) + ' · ' + w.session + (w.done ? ' · fait ✓' : '')),
     h('div', {style:{fontSize:'12px',color:detail ? '#e2e8f0' : '#8b9ab3',lineHeight:'1.5'}},
-      detail || 'Détail indisponible : relance « Prochaine semaine » pour l\'obtenir.'));
+      detail || 'Détail indisponible : relance « Ma prochaine séance » pour l\'obtenir.'));
 }
 
 /* ---------------- Header ---------------- */
@@ -763,15 +782,6 @@ function renderHome() {
   const week = loadWeeklyPlan();
   const o = loadObjective();
 
-  const btns = [
-    {id:'last',   icon:'🔬',label:'Analyser ma derniere seance',sub:'Prevu vs realise · utilise des tokens'},
-    {id:'session',icon:'⚡',label:'Ma prochaine seance',sub:'Analyse Strava · utilise des tokens'},
-    {id:'week',   icon:'📅',label:'Prochaine semaine',  sub:'Programme 7 jours · utilise des tokens'},
-    {id:'fatigue',icon:'😮',label:'Je suis fatigue',    sub:'Reduire la charge · utilise des tokens'},
-    {id:'cross',  icon:'🚴',label:'Autre sport fait',   sub:'Velo, natation, rando · utilise des tokens'},
-    {id:'bilan',  icon:'🔍',label:'Bilan de situation', sub:'Analyse honnete de ta progression · utilise des tokens'},
-  ];
-
   const children = [
     h('div', {style:{fontSize:'14px',fontWeight:'700',color:'#e2e8f0',marginBottom:'3px'}}, 'Bonjour ' + name + ' 👋'),
     !cache ? h('div', {style:{fontSize:'12px',color:'#a3afc2',marginBottom:'16px'}}, 'Lance une analyse pour obtenir ta premiere seance.') : null
@@ -801,20 +811,32 @@ function renderHome() {
     children.push(h('div', {style:{marginBottom:'12px'}}));
   }
 
-  btns.forEach(function(b) {
-    children.push(h('button', {
-      onclick: function() {
-        if (b.id === 'cross') setState({view:'cross'});
-        else if (b.id === 'last') analyzeLastNow();
-        else analyzeWithComment(b.id);
-      },
-      style:{width:'100%',display:'flex',alignItems:'center',gap:'14px',background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'16px',marginBottom:'9px',color:'#e2e8f0',textAlign:'left'}},
-      h('span', {style:{width:'42px',height:'42px',borderRadius:'12px',background:'#141824',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'20px',flexShrink:'0'}}, b.icon),
-      h('div', {style:{flex:'1'}},
-        h('div', {style:{fontSize:'14px',fontWeight:'600',marginBottom:'2px'}}, b.label),
-        h('div', {style:{fontSize:'12px',color:'#a3afc2'}}, b.sub)),
-      h('span', {style:{color:'#7a889f',fontSize:'18px'}}, '>')));
-  });
+  // Action principale
+  children.push(h('button', {
+    onclick: function() { analyzeWithComment('session'); },
+    style:{width:'100%',display:'flex',alignItems:'center',gap:'14px',background:'#1a0f35',border:'2px solid #7c3aed',borderRadius:'14px',padding:'15px 16px',marginBottom:'9px',color:'#e2e8f0',textAlign:'left'}},
+    h('span', {style:{width:'42px',height:'42px',borderRadius:'12px',background:'#7c3aed33',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'20px',flexShrink:'0'}}, '⚡'),
+    h('div', {style:{flex:'1'}},
+      h('div', {style:{fontSize:'15px',fontWeight:'700',marginBottom:'2px'}}, 'Ma prochaine séance'),
+      h('div', {style:{fontSize:'12px',color:'#c4b5fd'}}, 'Séance détaillée et programme de la semaine')),
+    h('span', {style:{color:'#a78bfa',fontSize:'18px'}}, '>')));
+
+  // Actions secondaires : grille 2x2
+  const secondary = [
+    { icon:'🔬', label:'Analyser la séance', run:function(){ analyzeLastNow(); } },
+    { icon:'🔋', label:'Je suis fatigué',   run:function(){ analyzeWithComment('fatigue'); } },
+    { icon:'🚴', label:'Autre sport',       run:function(){ setState({ view:'cross' }); } },
+    { icon:'🔍', label:'Bilan',             run:function(){ analyzeWithComment('bilan'); } },
+  ];
+  children.push(h.apply(null, ['div', {style:{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:'8px',marginBottom:'6px'}}].concat(
+    secondary.map(function(a) {
+      return h('button', {
+        onclick: a.run,
+        style:{display:'flex',alignItems:'center',gap:'10px',background:'#0e1118',border:'1px solid #1a2035',borderRadius:'12px',padding:'13px 12px',color:'#e2e8f0',textAlign:'left',minHeight:'50px'}},
+        h('span', {style:{fontSize:'18px',flexShrink:'0'}}, a.icon),
+        h('span', {style:{fontSize:'13px',fontWeight:'600',lineHeight:'1.25'}}, a.label));
+    }))));
+  children.push(h('div', {style:{fontSize:'10px',color:'#7a889f',textAlign:'center',marginBottom:'14px'}}, 'Ces actions appellent Claude et utilisent des tokens'));
 
   // Bloc Ma semaine
   if (week) {
@@ -840,7 +862,8 @@ function renderHome() {
 
       children.push(
         h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px'}},
-          h('div', {style:{fontSize:'11px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'2px',marginBottom: logic ? '6px' : '12px',fontWeight:'700'}}, 'Ma semaine'),
+          h('div', {style:{fontSize:'11px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'2px',marginBottom: logic ? '6px' : '12px',fontWeight:'700'}}, planWeekTitle('Ma semaine')),
+          planWeekKind() === 'past' ? h('div', {style:{fontSize:'11px',color:'#fbbf24',marginBottom:'10px'}}, 'Programme périmé : lance « Ma prochaine séance » pour le mettre à jour.') : null,
           logic ? h('div', {style:{fontSize:'12px',color:'#c4b5fd',lineHeight:'1.5',marginBottom:'12px'}}, logic) : null,
           (doneKm !== null && plannedKm > 0) ? h('div', {style:{display:'flex',alignItems:'center',gap:'12px',marginBottom:'12px'}},
             donutEl(doneKm, plannedKm),
@@ -856,12 +879,11 @@ function renderHome() {
   // Fiche coureur (sans appel API)
   children.push(h('button', {
     onclick: function() { setState({ view:'runner' }); },
-    style:{width:'100%',display:'flex',alignItems:'center',gap:'14px',background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px',color:'#e2e8f0',textAlign:'left'}},
-    h('span', {style:{width:'42px',height:'42px',borderRadius:'12px',background:'#141824',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'20px',flexShrink:'0'}}, '📋'),
-    h('div', {style:{flex:'1'}},
-      h('div', {style:{fontSize:'14px',fontWeight:'600',marginBottom:'2px'}}, 'Ma fiche coureur'),
-      h('div', {style:{fontSize:'12px',color:'#a3afc2'}}, 'VMA, seuils, allures, zones de FC')),
-    h('span', {style:{color:'#7a889f',fontSize:'18px'}}, '>')));
+    style:{width:'100%',display:'flex',alignItems:'center',gap:'10px',background:'#0e1118',border:'1px solid #1a2035',borderRadius:'12px',padding:'11px 14px',marginBottom:'9px',color:'#e2e8f0',textAlign:'left'}},
+    h('span', {style:{fontSize:'16px',flexShrink:'0'}}, '📋'),
+    h('span', {style:{flex:'1',fontSize:'13px',fontWeight:'600'}}, 'Ma fiche coureur'),
+    h('span', {style:{fontSize:'11px',color:'#8b9ab3'}}, 'VMA, allures, zones'),
+    h('span', {style:{color:'#7a889f',fontSize:'16px',marginLeft:'6px'}}, '>')));
 
   // Graphe km cumules par semaine : course a pied uniquement (route, trail, tapis)
   const vol = loadVolume();
@@ -1378,7 +1400,7 @@ function renderRunner() {
   if (!r) {
     return h('div', {class:'fade',style:{padding:'20px 18px'}}, back,
       h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'18px',fontSize:'13px',color:'#a3afc2',lineHeight:'1.6'}},
-        'Ta fiche se charge à la prochaine analyse. Lance « Ma prochaine seance » ou « Prochaine semaine », puis reviens ici.'));
+        'Ta fiche se charge à la prochaine analyse. Lance « Ma prochaine séance », puis reviens ici.'));
   }
 
   const zoneColors = ['#60a5fa','#22d3ee','#a3e635','#fbbf24','#f87171'];
@@ -1535,7 +1557,7 @@ function renderResult() {
         h('div', {style:{borderRadius:'7px',padding:'6px 2px',background:wc+(selected?'35':'18'),border:(selected?'2px solid '+wc:'1px solid '+wc+'30'),fontSize:'9px',color:w.color||'#374151',fontWeight:'700',minHeight:'40px',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:'1.2',textAlign:'center'}}, w.session));
     });
     children.push(h.apply(null, ['div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
-      h('div', {style:{fontSize:'11px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'2px',marginBottom: has(d.weekLogic) ? '6px' : '12px',fontWeight:'700'}}, 'Bloc semaine'),
+      h('div', {style:{fontSize:'11px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'2px',marginBottom: has(d.weekLogic) ? '6px' : '12px',fontWeight:'700'}}, planWeekTitle('Bloc semaine')),
       has(d.weekLogic) ? h('div', {style:{fontSize:'12px',color:'#c4b5fd',lineHeight:'1.5',marginBottom:'12px'}}, d.weekLogic) : null,
       h.apply(null, ['div', {style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'5px'}}].concat(weekCards)),
       weekDetailPanel(d.week)
