@@ -102,6 +102,24 @@ const dur = (sec) => {
 };
 
 /* ============================================================
+   Lecture robuste du JSON renvoyé par Claude
+   Cause n°1 d'échec : une allure écrite 4'45"/km dans une chaîne JSON
+   (le " des secondes casse le JSON). On l'échappe avant de relire.
+   ============================================================ */
+function parseModelJSON(raw) {
+  const s = raw.indexOf("{");
+  const e = raw.lastIndexOf("}");
+  if (s === -1 || e === -1) return { error: "JSON introuvable dans la réponse" };
+  const txt = raw.slice(s, e + 1);
+  try { return { json: JSON.parse(txt) }; } catch (err) { /* on tente la réparation */ }
+  // Guillemet de secondes (chiffre'chiffres") qui n'est pas suivi d'un délimiteur JSON
+  const fixed = txt.replace(/(\d'\d{1,2})"(?!\s*[,}\]:])/g, '$1\\"');
+  try { return { json: JSON.parse(fixed), repaired: true }; } catch (err) {
+    return { error: "Parse error (JSON invalide)" };
+  }
+}
+
+/* ============================================================
    Analyse des flux Strava (vitesse, FC, altitude, pente)
    ============================================================ */
 
@@ -769,16 +787,12 @@ export async function runAnalysis(params) {
 
     const claudeData = await claudeRes.json();
     const raw = (claudeData.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
-    const start = raw.indexOf("{");
-    const end = raw.lastIndexOf("}");
-    if (start === -1 || end === -1) return reply(500, { error: "JSON introuvable dans la réponse", raw });
-
-    let result;
-    try {
-      result = JSON.parse(raw.slice(start, end + 1));
-    } catch (e) {
-      return reply(500, { error: "Parse error (JSON invalide)", raw });
+    const parsed = parseModelJSON(raw);
+    if (parsed.error) {
+      const cut = claudeData.stop_reason === "max_tokens" ? " (réponse tronquée : trop longue)" : "";
+      return reply(500, { error: parsed.error + cut, raw: raw.slice(0, 2000) });
     }
+    const result = parsed.json;
 
     result._mode = mode; // permet au front de distinguer bilan vs séance
 
@@ -838,10 +852,12 @@ async function callClaudeJSON(system, user, maxTokens) {
   }
   const data = await r.json();
   const raw = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
-  const s = raw.indexOf("{");
-  const e = raw.lastIndexOf("}");
-  if (s === -1 || e === -1) return { error: "JSON introuvable dans la réponse" };
-  try { return { json: JSON.parse(raw.slice(s, e + 1)) }; } catch (err) { return { error: "Parse error (JSON invalide)" }; }
+  const parsed = parseModelJSON(raw);
+  if (parsed.error) {
+    const cut = data.stop_reason === "max_tokens" ? " (réponse tronquée : trop longue)" : "";
+    return { error: parsed.error + cut, detail: raw.slice(-200) };
+  }
+  return { json: parsed.json };
 }
 
 // params : { access_token, activityId (optionnel : sinon dernière course), planned (texte de la séance prévue, optionnel) }
@@ -872,11 +888,11 @@ TÂCHE : analyse détaillée de la séance indiquée, à partir de sa structure 
 - Vérifie la stabilisation de la FC dans les blocs longs, la dérive, le temps hors zone ; en footing, signale toute FC au-dessus de ${RUNNER.footingHrAlert}.
 - Compare la FC à allure égale avec les séances récentes fournies pour détecter fatigue ou progrès, en restant prudent (météo inconnue).
 - Vocabulaire du profil (EF, SV1, seuil, allure marathon, allure semi, allure 10 km, VMA, sortie longue, récupération). Jamais "tempo" seul. Concis, pas de répétition entre les champs.
-Schéma JSON : {"title":"string (type réel de la séance, ex: Seuil 3x10')","verdict":"reussie"|"partielle"|"ratee"|"libre","verdictLabel":"string court (ex: Séance réussie)","summary":"string (2 phrases)","planned":"string (ce qui était prévu, '' si rien)","done":"string (1 ligne, ce qui a été réellement couru)","keyNumbers":[{"label":"string","value":"string"}],"blocks":[{"label":"string (ex: Rép 1, Échauffement)","detail":"string"}],"hr":"string (2 phrases sur la FC)","fatigue":"string (1-2 phrases)","positives":["string"],"improve":["string"],"impact":"string (1-2 phrases : conséquence pour les prochaines séances)"}. "keyNumbers" : 4 à 6 chiffres clés. "blocks" : le déroulé réel, un élément par phase ou répétition (14 maximum, regroupe si plus). "positives" et "improve" : 1 à 3 éléments chacun.`;
+Schéma JSON : {"title":"string (type réel de la séance, ex: Seuil 3x10')","verdict":"reussie"|"partielle"|"ratee"|"libre","verdictLabel":"string court (ex: Séance réussie)","summary":"string (2 phrases)","planned":"string (ce qui était prévu, '' si rien)","done":"string (1 ligne, ce qui a été réellement couru)","keyNumbers":[{"label":"string","value":"string"}],"blocks":[{"label":"string (ex: Rép 1, Échauffement)","detail":"string"}],"hr":"string (2 phrases sur la FC)","fatigue":"string (1-2 phrases)","positives":["string"],"improve":["string"],"impact":"string (1-2 phrases : conséquence pour les prochaines séances)"}. "keyNumbers" : 4 à 6 chiffres clés. "blocks" : le déroulé réel, un élément par phase ou répétition (10 maximum, regroupe les répétitions semblables si plus). "positives" et "improve" : 1 à 3 éléments chacun. Dans les valeurs JSON, n'utilise JAMAIS le guillemet double pour les secondes : écris les allures 4'45/km et les durées 3'30 ou 3 min 30.`;
 
     const user = `SÉANCE À ANALYSER :\n${targetProfile.text}\n\nSÉANCE PRÉVUE : ${planned && String(planned).trim() ? planned : "aucune séance prévue connue"}\n\n${otherProfiles.length ? "COURSES RÉCENTES POUR COMPARAISON :\n" + otherProfiles.map((p) => p.text).join("\n") : "Pas d'autre course récente."}`;
 
-    const out = await callClaudeJSON(system, user, 2000);
+    const out = await callClaudeJSON(system, user, 3500);
     if (out.error) return reply(502, { error: out.error, detail: out.detail });
 
     return reply(200, {
