@@ -75,8 +75,9 @@
    v9 : analyse de la dernière séance, détection automatique (webhook Strava), écran d'état.
    v10 : accueil réorganisé (1 bouton principal + grille 2x2), bouton semaine supprimé,
          programme de la semaine suivante le dimanche ou quand la semaine est terminée.
+   v11 : service worker (fin des soucis de cache) + notifications push.
    ============================================================ */
-const APP_VERSION = 10;
+const APP_VERSION = 11;
 (function migrate() {
   const v = parseInt(localStorage.getItem('mc_app_version') || '1', 10);
   if (v < 3) {
@@ -1332,11 +1333,82 @@ function renderLast() {
     h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#a3afc2',fontSize:'13px',fontWeight:'600'}}, '← Retour'));
 }
 
+/* ---------------- Notifications push ---------------- */
+function pushSupported() {
+  return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+}
+function isStandalone() {
+  return !!(window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches));
+}
+function swReady(timeoutMs) {
+  return Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Service worker indisponible')); }, timeoutMs || 6000); }),
+  ]);
+}
+function b64ToU8(b64) {
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+// État des notifications sur cet appareil
+async function loadPushInfo() {
+  if (!pushSupported()) return { supported:false };
+  const info = { supported:true, permission: Notification.permission, subscribed:false, devices:0 };
+  try {
+    const reg = await swReady();
+    const sub = await reg.pushManager.getSubscription();
+    const r = await fetch('/api/push', { headers: appHeaders() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Erreur');
+    info.devices = d.devices || 0;
+    info.subscribed = !!(sub && (d.endpoints || []).indexOf(sub.endpoint) >= 0);
+  } catch(e) { info.error = e.message; }
+  return info;
+}
+async function enablePush() {
+  try {
+    // La demande d'autorisation doit partir directement du toucher (exigence iOS)
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') throw new Error('Autorisation refusée. Réactive-la dans Réglages > Notifications > Coach.');
+    const reg = await swReady();
+    const r = await fetch('/api/push', { headers: appHeaders() });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Erreur');
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey: b64ToU8(d.publicKey) });
+    const r2 = await fetch('/api/push', { method:'POST', headers: appHeaders(), body: JSON.stringify({ subscription: sub.toJSON() }) });
+    if (!r2.ok) throw new Error('Enregistrement refusé par le serveur');
+    setState({ pushInfo: await loadPushInfo(), pushMsg: 'Notifications activées ✓' });
+  } catch(e) { setState({ pushInfo: await loadPushInfo(), pushMsg: e.message }); }
+}
+async function testPush() {
+  try {
+    const r = await fetch('/api/push', { method:'POST', headers: appHeaders(), body: JSON.stringify({ action:'test' }) });
+    const d = await r.json();
+    setState({ pushMsg: r.ok ? (d.sent ? 'Notification de test envoyée.' : 'Aucun appareil abonné.') : (d.error || 'Erreur') });
+  } catch(e) { setState({ pushMsg: e.message }); }
+}
+async function disablePush() {
+  try {
+    const reg = await swReady();
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await fetch('/api/push', { method:'DELETE', headers: appHeaders(), body: JSON.stringify({ endpoint: sub.endpoint }) });
+      await sub.unsubscribe();
+    }
+    setState({ pushInfo: await loadPushInfo(), pushMsg: 'Notifications désactivées sur cet appareil.' });
+  } catch(e) { setState({ pushMsg: e.message }); }
+}
+
 /* ---------------- État du coach automatique ---------------- */
 async function openStatus() {
-  setState({ view:'status', hook:null, hookError:null });
+  setState({ view:'status', hook:null, hookError:null, pushInfo:null, pushMsg:null });
   if (!getAppKey()) return;
   await syncFromServer();
+  loadPushInfo().then(function(pi) { if (state.view === 'status') setState({ pushInfo: pi }); });
   try {
     const r = await fetch('/api/hook', { headers: appHeaders() });
     const d = await r.json();
@@ -1367,6 +1439,14 @@ function renderStatus() {
   const hookTxt = !key ? 'serveur non relié' : state.hookError ? 'erreur' : hook == null ? 'vérification…' : hook.active ? 'active ✓' : 'inactive';
   const hookColor = hook && hook.active ? '#34d399' : state.hookError ? '#f87171' : '#fbbf24';
   const lp = st.lastPipeline;
+  const pi = state.pushInfo;
+  const pushTxt = !key ? 'serveur non relié'
+    : !pushSupported() ? (isStandalone() ? 'non prises en charge' : 'ouvre l\'app depuis l\'écran d\'accueil')
+    : pi == null ? 'vérification…'
+    : pi.permission === 'denied' ? 'bloquées (Réglages iOS)'
+    : pi.subscribed ? 'actives ✓'
+    : 'inactives';
+  const pushColor = pi && pi.subscribed ? '#34d399' : (pi && pi.permission === 'denied') ? '#f87171' : '#fbbf24';
   const back = h('div', {style:{display:'flex',alignItems:'center',gap:'12px',marginBottom:'16px'}},
     h('button', {onclick:function(){ setState({view:'home'}); }, style:{background:'none',border:'none',color:'#7c3aed',fontSize:'22px',cursor:'pointer',padding:'0',lineHeight:'1'}}, '←'),
     h('div', {style:{fontSize:'16px',fontWeight:'800',color:'#e2e8f0'}}, '🩺 État du coach'));
@@ -1380,9 +1460,14 @@ function renderStatus() {
       lineEl('Dernière activité reçue', st.lastEvent ? fmtDateTime(st.lastEvent.at) : 'aucune'),
       lineEl('Dernière analyse', lp ? fmtDateTime(lp.at) + (lp.source === 'webhook' ? ' (auto)' : ' (manuelle)') : 'aucune'),
       lineEl('Résultat', lp ? (lp.ok ? 'OK ✓' + (lp.durationS ? ' · ' + lp.durationS + ' s' : '') : 'échec') : '-', lp ? (lp.ok ? '#34d399' : '#f87171') : null),
-      lineEl('Notifications', 'à venir (étape 3)', '#8b9ab3')),
+      lineEl('Notifications', pushTxt, pushColor)),
     (lp && !lp.ok && lp.error) ? h('div', {style:{background:'#1a0a0a',border:'1px solid #3a1515',borderRadius:'12px',padding:'12px 14px',marginBottom:'10px',fontSize:'12px',color:'#fca5a5',lineHeight:'1.5',wordBreak:'break-word'}}, 'Dernière erreur : ' + lp.error) : null,
     state.hookError ? h('div', {style:{background:'#1a0a0a',border:'1px solid #3a1515',borderRadius:'12px',padding:'12px 14px',marginBottom:'10px',fontSize:'12px',color:'#fca5a5',lineHeight:'1.5',wordBreak:'break-word'}}, state.hookError) : null,
+    state.pushMsg ? h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'12px',padding:'12px 14px',marginBottom:'10px',fontSize:'12px',color:'#c4cdd8',lineHeight:'1.5'}}, state.pushMsg) : null,
+    (key && pi && pi.supported && !pi.subscribed && pi.permission !== 'denied') ? h('button', {onclick:function(){ enablePush(); }, style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#7c3aed',color:'#fff',fontSize:'14px',fontWeight:'700',marginBottom:'10px'}}, '🔔 Activer les notifications') : null,
+    (key && pi && pi.subscribed) ? h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'10px'}},
+      h('button', {onclick:function(){ testPush(); }, style:{padding:'13px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#e2e8f0',fontSize:'12px',fontWeight:'700'}}, '🔔 Tester'),
+      h('button', {onclick:function(){ disablePush(); }, style:{padding:'13px',borderRadius:'12px',background:'transparent',border:'1px solid #3a1515',color:'#f87171',fontSize:'12px',fontWeight:'700'}}, 'Désactiver')) : null,
     (key && hook && !hook.active) ? h('button', {onclick:function(){ setHook('POST'); }, style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#7c3aed',color:'#fff',fontSize:'14px',fontWeight:'700',marginBottom:'10px'}}, '⚡ Activer la détection automatique') : null,
     (key && hook && hook.active) ? h('div', {style:{fontSize:'11px',color:'#7a889f',lineHeight:'1.5',marginBottom:'10px',wordBreak:'break-all'}}, 'Strava prévient : ' + (hook.callbackUrl || '')) : null,
     (key && hook && hook.active) ? h('button', {onclick:function(){ showConfirm({ icon:'⏸', title:'Désactiver la détection ?', sub:'Strava ne préviendra plus l\'app. Tu pourras la réactiver ici.', okLabel:'Désactiver', onConfirm:function(){ setHook('DELETE'); } }); }, style:{width:'100%',padding:'13px',borderRadius:'12px',background:'transparent',border:'1px solid #3a1515',color:'#f87171',fontSize:'12px',fontWeight:'700',marginBottom:'10px'}}, 'Désactiver la détection automatique') : null,
@@ -1646,9 +1731,30 @@ function render() {
 
 // Init
 handleOAuthParams();
+(function deepLink() {
+  const v = new URLSearchParams(window.location.search).get('view');
+  if (v && ['last','result','status','runner'].indexOf(v) >= 0) {
+    state.view = v;
+    window.history.replaceState({}, '', '/');
+  }
+})();
 if (!state.auth) state.view = 'login';
 render();
 if (state.auth) syncFromServer();
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(function() {});
+  // Notification touchée alors que l'app était déjà ouverte
+  navigator.serviceWorker.addEventListener('message', function(ev) {
+    if (!ev.data || ev.data.type !== 'open') return;
+    const v = new URLSearchParams((ev.data.url || '').split('?')[1] || '').get('view');
+    syncFromServer().then(function() {
+      if (v === 'status') openStatus();
+      else if (v && ['last','result','runner'].indexOf(v) >= 0) setState({ view: v });
+      else setState({ view: 'home' });
+    });
+  });
+}
 </script>
 </body>
 </html>
