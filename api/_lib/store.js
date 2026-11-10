@@ -10,6 +10,9 @@ const KEYS = {
   settings: "mc:settings", // objectif + préférences, pour les analyses automatiques
   result: "mc:result",     // dernière analyse séance/semaine { body, savedAt }
   bilan: "mc:bilan",       // dernier bilan { body, savedAt }
+  last: "mc:last",         // analyse de la dernière séance { body, savedAt }
+  status: "mc:status",     // état du coach automatique (dernier événement, dernier traitement)
+  verify: "mc:verify",     // jeton de vérification du webhook Strava
 };
 export { KEYS };
 
@@ -41,6 +44,11 @@ export async function getJSON(key) {
 }
 export async function setJSON(key, value) {
   return cmd(["SET", key, JSON.stringify(value)]);
+}
+// Pose la clé seulement si elle n'existe pas (anti-doublon). true = première fois.
+export async function setOnce(key, ttlSeconds) {
+  const r = await cmd(["SET", key, "1", "NX", "EX", String(ttlSeconds || 604800)]);
+  return r === "OK";
 }
 
 // Vérifie l'en-tête x-app-key (comparaison à temps constant)
