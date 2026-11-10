@@ -1,0 +1,7 @@
+{
+  "name": "marathon-coach",
+  "private": true,
+  "dependencies": {
+    "@vercel/functions": "3.10.3"
+  }
+}
