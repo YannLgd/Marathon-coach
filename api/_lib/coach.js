@@ -2,6 +2,8 @@
 // Cœur du coach : lecture Strava, analyse des flux, prompt, appel Claude.
 // Utilisé par api/analyze.js (bouton dans l'app) et, à l'étape 2, par le webhook Strava.
 // v8 : extrait de api/analyze.js, la fiche coureur vit dans api/_lib/runner.js
+// v12 : dates relatives explicites (il y a N jours, semaine en cours / dernière) dans tous les prompts,
+//       pour que le coach ne prenne plus une séance d'il y a 2 semaines pour une séance de cette semaine.
 
 import { RUNNER } from "./runner.js";
 
@@ -11,34 +13,36 @@ const DEEP_WINDOW_DAYS = 14; // fenêtre d'analyse détaillée des courses
 const MAX_DEEP_RUNS = 6; // plafond d'appels Strava (2 par course) pour rester sous les limites d'API
 const PROFILE_CACHE = new Map(); // cache best effort (instance serveur chaude uniquement)
 
+// Zones affichées sans chevauchement : la borne haute est exclue (EF < 140, SV1 140-149...)
 const zoneRanges = RUNNER.hrZones.map((z, i) => {
   const lo = i === 0 ? null : RUNNER.hrZones[i - 1].max;
-  if (lo == null) return { name: z.name, range: `< ${z.max}` };
-  if (z.max === -1) return { name: z.name, range: `> ${lo}` };
-  return { name: z.name, range: `${lo}-${z.max}` };
+  if (lo == null) return { name: z.name, lo: null, hi: z.max - 1, range: `< ${z.max}` };
+  if (z.max === -1) return { name: z.name, lo, hi: null, range: `≥ ${lo}` };
+  return { name: z.name, lo, hi: z.max - 1, range: `${lo}-${z.max - 1}` };
 });
 const zonesTxt = zoneRanges.map((z) => `${z.name} ${z.range}`).join(" · ");
 
 // Fiche coureur renvoyée au front (affichage en lecture seule)
-const RUNNER_CARD = {
+export const RUNNER_CARD = {
   updated: RUNNER.updated,
-  vma: RUNNER.vma,
+  vmaKmh: RUNNER.vmaKmh,
   vmaPace: RUNNER.vmaPace,
+  vmaNote: RUNNER.vmaNote,
   hrMax: RUNNER.hrMax,
-  zones: zoneRanges,
+  hrMaxNote: RUNNER.hrMaxNote,
   paces: RUNNER.paces,
-  tests: RUNNER.tests,
+  zones: zoneRanges,
   profile: RUNNER.profile,
+  tests: RUNNER.tests,
 };
 
 const RUNNER_PROMPT = `\nPROFIL COUREUR (mis à jour le ${RUNNER.updated}, PRIORITAIRE sur toute autre estimation d'allure ou de zone) :
+VMA : ${RUNNER.vmaKmh} km/h (${RUNNER.vmaPace}/km), ${RUNNER.vmaNote}. FC max : ${RUNNER.hrMax} bpm observée, ${RUNNER.hrMaxNote}.
+ALLURES (min/km) : ${RUNNER.paces.map((p) => `${p.name} ${p.pace}`).join(" · ")}.
+ZONES DE FC (bpm) : ${zonesTxt}. Une allure et une zone de même nom vont ensemble (ex. EF = ${RUNNER.paces[0].pace}/km et FC ${zoneRanges[0].range}).
+PROFIL : ${RUNNER.profile.map((p) => `${p.label} : ${p.text}`).join(" · ")}.
 TESTS ET RÉFÉRENCES :
-${RUNNER.tests.map((t) => "- " + t).join("\n")}
-ALLURES DE RÉFÉRENCE :
-${RUNNER.paces.map((t) => "- " + t).join("\n")}
-ZONES DE FC : ${zonesTxt}.
-PROFIL :
-${RUNNER.profile.map((t) => "- " + t).join("\n")}`;
+${RUNNER.tests.map((t) => "- " + t).join("\n")}`;
 
 const ANALYSIS_RULES = `\nRÈGLES D'ANALYSE :
 - Deux ancrages distincts : endurance et seuils calés sur ce que Yann tient en continu ; fractionné calé sur la VMA et le 30/30. N'applique jamais un % de VMA unique à toutes les zones.
@@ -46,7 +50,10 @@ const ANALYSIS_RULES = `\nRÈGLES D'ANALYSE :
 - Compare la FC à allure égale d'une séance à l'autre pour détecter la fatigue, en gardant en tête qu'humidité et chaleur la font monter.
 - En footing, une FC au-dessus de ${RUNNER.footingHrAlert} = sortie de l'endurance : signale-le dans "why" quand c'est arrivé récemment.
 - Répétitions courtes : se fier à la durée ou distance de chaque répétition, pas à l'allure GPS affichée.
-- Tiens compte de la charge des 2-3 jours précédents (trail, vélo compris) avant de proposer une séance de qualité.`;
+- Tiens compte de la charge des 2-3 jours précédents (trail, vélo compris) avant de proposer une séance de qualité.
+- DATES : chaque séance est fournie avec sa date complète, son ancienneté en jours et sa semaine (semaine en cours, semaine dernière, il y a N semaines). Ces repères font foi. N'écris "cette semaine" que pour une séance marquée "semaine en cours". Un jour de la semaine seul (ex. "dimanche") ne désigne jamais le dernier dimanche : cite toujours la date (ex. "dimanche 1er nov., il y a 12 jours").
+- Pour juger la charge récente, utilise uniquement les séances datées des 7 derniers jours. Une séance plus ancienne sert à comparer la FC ou le niveau, jamais à dire que la semaine est chargée.
+- Type de terrain : "trail" seulement si l'activité est marquée trail par Strava ; sinon parle de course (ou de sortie longue) même avec du relief.`;
 
 const PROGRAM_RULES = `\nRÈGLES DE PROGRAMMATION :
 - Les allures et FC prescrites viennent EXCLUSIVEMENT du profil coureur. Footing, EF et sortie longue de base : 6'00"-6'45"/km, FC < 140, jamais plus vite que 6'00"/km. Récupération : bas de la fourchette EF.
@@ -63,9 +70,51 @@ const WRITING_RULES = `\nRÈGLES DE RÉDACTION :
 - "goal" : 1 phrase, ce que la séance travaille et pourquoi maintenant, en s'appuyant sur une séance récente précise (date, donnée mesurée).
 - "success" : 1 critère mesurable sur la montre (ex. "FC stable entre 158 et 162 sur les 3 blocs, récup trottinée").
 - "structure" : déroulé ordonné. Séance de qualité : au moins 3 blocs (Échauffement, Corps de séance, Retour au calme) ; le corps de séance précise le nombre de répétitions, la durée ou distance de chacune, l'allure, la FC, la nature et la durée des récupérations. Sortie facile : 1 ou 2 blocs (ex. EF puis lignes droites). Repos : tableau vide.
-- "why" : 2-3 phrases reliées aux données réelles des séances récentes (ce qui s'est passé, ce que ça implique).
+- "why" : 2 phrases courtes maximum, reliées aux données réelles des séances récentes (avec leur date).
 - "weekLogic" : 1 phrase qui donne le fil conducteur de la semaine (ex. "Semaine seuil : on consolide la tenue sous fatigue, VMA en entretien").
-- Concis, pas de répétition d'un champ à l'autre.`;
+- "before", "during", "after", "gear", "tip" : 1 phrase courte chacun (12 mots maximum).
+- Très concis : l'app s'affiche sur téléphone. Pas de répétition d'un champ à l'autre.`;
+
+/* ============================================================
+   Dates en Europe/Paris (Vercel tourne en UTC)
+   ============================================================ */
+const MONTHS_FR = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+const pad2 = (n) => String(n).padStart(2, "0");
+const isoOfDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const dayMs = (iso) => Date.parse(iso + "T00:00:00Z");
+
+function mondayIsoOf(iso) {
+  const d = new Date(iso + "T00:00:00Z");
+  const dow = d.getUTCDay();
+  d.setUTCDate(d.getUTCDate() + (dow === 0 ? -6 : 1 - dow));
+  return d.toISOString().slice(0, 10);
+}
+
+// Contexte du jour, heure de Nice
+function parisContext() {
+  const parisNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Paris" }));
+  const todayIso = isoOfDate(parisNow);
+  return {
+    parisNow,
+    todayIso,
+    mondayIso: mondayIsoOf(todayIso),
+    dow: parisNow.getDay(),
+    todayFr: parisNow.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
+  };
+}
+
+// "dimanche 1 nov. (il y a 12 jours, il y a 2 semaines)" : date absolue + repères relatifs
+function dateLabel(iso, ctx) {
+  if (!iso) return "";
+  const d = new Date(iso + "T00:00:00Z");
+  const abs = `${WEEKDAYS_FR[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS_FR[d.getUTCMonth()]}`;
+  if (!ctx) return abs;
+  const days = Math.round((dayMs(ctx.todayIso) - dayMs(iso)) / 86400000);
+  const ago = days <= 0 ? "aujourd'hui" : days === 1 ? "hier" : `il y a ${days} jours`;
+  const wk = Math.round((dayMs(ctx.mondayIso) - dayMs(mondayIsoOf(iso))) / (7 * 86400000));
+  const wkTxt = wk <= 0 ? "semaine en cours" : wk === 1 ? "semaine dernière" : `il y a ${wk} semaines`;
+  return `${abs} (${ago}, ${wkTxt})`;
+}
 
 /* ============================================================
    Helpers génériques
@@ -473,12 +522,9 @@ function splitsSummary(splits) {
 
 function buildRunProfile(a, detail, analysis) {
   const iso = (a.start_date_local || a.start_date || "").slice(0, 10);
-  const day = iso ? new Date(iso + "T00:00:00Z") : null;
-  const label = day
-    ? `${WEEKDAYS_FR[day.getUTCDay()]} ${day.toLocaleDateString("fr-FR", { day: "numeric", month: "short", timeZone: "UTC" })}`
-    : "";
+  const trail = a.sport_type === "TrailRun" || a.type === "TrailRun";
   const head = [
-    label,
+    trail ? "trail" : "course",
     `${(a.distance / 1000).toFixed(1)} km en ${dur(a.moving_time)}`,
     a.total_elevation_gain ? `D+${Math.round(a.total_elevation_gain)}m` : "",
     a.average_heartrate ? `FC moy ${Math.round(a.average_heartrate)}` : "",
@@ -499,8 +545,14 @@ function buildRunProfile(a, detail, analysis) {
   return {
     iso,
     kind: analysis ? analysis.kind : null,
-    text: `- ${head}\n` + body.map((l) => `    ${l}`).join("\n"),
+    head,
+    body: body.map((l) => `    ${l}`).join("\n"),
   };
+}
+
+// Texte d'une course pour le prompt, avec sa date relative au jour J
+function profileText(p, ctx) {
+  return `- ${dateLabel(p.iso, ctx)} · ${p.head}\n${p.body}`;
 }
 
 // Récupère détail + flux de chaque course récente (en parallèle) et construit son profil
@@ -540,8 +592,9 @@ export async function runAnalysis(params) {
     if (!access_token) return reply(400, { error: "No access_token" });
 
     // ---------- Dates en Europe/Paris (Vercel tourne en UTC) ----------
-    const parisNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Paris" }));
-    const pad = (n) => String(n).padStart(2, "0");
+    const ctx = parisContext();
+    const parisNow = ctx.parisNow;
+    const pad = pad2;
     const dateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const todayMidnight = new Date(parisNow.getFullYear(), parisNow.getMonth(), parisNow.getDate());
 
@@ -554,7 +607,7 @@ export async function runAnalysis(params) {
     // Date du jour : la semaine en cours est partielle, le modèle ne doit pas la juger comme une semaine complète
     const todayFr = parisNow.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
     const daysElapsed = dow === 0 ? 7 : dow;
-    const todayPrompt = `\nAUJOURD'HUI : ${todayFr}. La semaine en cours (depuis le lundi ${mondayStr}) est PARTIELLE : ${daysElapsed} jour(s) écoulé(s) sur 7, aujourd'hui inclus. Ne juge JAMAIS son volume, sa charge ou son nombre de séances comme faibles ou insuffisants : évalue volume, régularité et tendance uniquement sur les semaines complètes de l'historique.`;
+    const todayPrompt = `\nAUJOURD'HUI : ${todayFr} (${ctx.todayIso}). La semaine en cours (depuis le lundi ${mondayStr}) est PARTIELLE : ${daysElapsed} jour(s) écoulé(s) sur 7, aujourd'hui inclus. Ne juge JAMAIS son volume, sa charge ou son nombre de séances comme faibles ou insuffisants : évalue volume, régularité et tendance uniquement sur les semaines complètes de l'historique.`;
 
     // ---------- Objectif générique (éditable, date optionnelle) ----------
     const obj = objective || {};
@@ -684,14 +737,12 @@ export async function runAnalysis(params) {
       : `\nANALYSE DES SÉANCES : le détail seconde par seconde n'est pas disponible pour les courses récentes. Ne déduis jamais l'intensité d'une allure moyenne seule : appuie-toi sur la FC moyenne et l'effort relatif, et reste prudent.`;
 
     const deepBlock = profiles.length
-      ? `\n\nANALYSE DÉTAILLÉE DES COURSES RÉCENTES (${DEEP_WINDOW_DAYS} derniers jours) :\n${profiles.map((p) => p.text).join("\n")}`
+      ? `\n\nANALYSE DÉTAILLÉE DES COURSES RÉCENTES (${DEEP_WINDOW_DAYS} derniers jours) :\n${profiles.map((p) => profileText(p, ctx)).join("\n")}`
       : "";
 
     // ---------- Résumé des activités pour le prompt (toutes disciplines) ----------
     const activitySummary = activities.slice(0, 12).map((a) => {
       const iso = localDay(a);
-      const weekday = iso ? WEEKDAYS_FR[new Date(iso + "T00:00:00Z").getUTCDay()] : "";
-      const date = new Date(a.start_date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
       const km = (a.distance / 1000).toFixed(1);
       const pace = isRun(a) && a.average_speed > 0
         ? `allure moy ${Math.floor(1000 / a.average_speed / 60)}'${String(Math.round((1000 / a.average_speed) % 60)).padStart(2, "0")}"/km`
@@ -699,7 +750,7 @@ export async function runAnalysis(params) {
       const dp = a.total_elevation_gain ? `D+${Math.round(a.total_elevation_gain)}m` : "";
       const hr = a.average_heartrate ? `FC moy ${Math.round(a.average_heartrate)}bpm` : "";
       const effort = a.suffer_score ? `Effort ${a.suffer_score}` : "";
-      return `- ${weekday} ${date} · ${a.type} · ${km}km ${dp} ${pace} ${hr} ${effort}`.trim();
+      return `- ${dateLabel(iso, ctx)} · ${a.sport_type || a.type} · ${km}km ${dp} ${pace} ${hr} ${effort}`.trim();
     }).join("\n");
 
     const modePrompts = {
@@ -749,12 +800,12 @@ export async function runAnalysis(params) {
       ? `{"niveau":"string (ex: Intermédiaire, Bon, En reprise)","tendance":"string (ex: En progression, Stable, En baisse)","acquis":["string","string","string"],"atravailler":["string","string","string"],"priorites":["string","string","string"],"verdict":"continuer"|"ameliorer"|"downgrade","verdictDetail":"string (2-3 phrases honnêtes sur l'objectif)","confidence":75}`
       : `{"headline":"string (3 mots max)","type":"string (zone de la séance)","zone":"string (ex: SV2 · FC 158-162)","goal":"string (1 phrase)","success":"string (1 critère mesurable)","structure":[{"phase":"Échauffement","detail":"string","pace":"string","hr":"string"},{"phase":"Corps de séance","detail":"string","pace":"string","hr":"string"},{"phase":"Retour au calme","detail":"string","pace":"string","hr":"string"}],"distance":"string (ex: 12 km)","dplus":"string (ex: 400 m, ou '' si plat)","duration":"string (ex: 1h10)","pace":"string (fourchette du corps de séance)","hr":"string","rpe":"string","tip":"string (1 phrase)","before":"string","during":"string","after":"string","gear":"string","why":"string (2-3 phrases)","weekLogic":"string (1 phrase)","confidence":75,"nextDay":"Lundi","week":[{"day":"Lun","session":"string","detail":"string","color":"#hex","done":false},{"day":"Mar","session":"string","detail":"string","color":"#hex","done":false},{"day":"Mer","session":"string","detail":"string","color":"#hex","done":false},{"day":"Jeu","session":"string","detail":"string","color":"#hex","done":false},{"day":"Ven","session":"string","detail":"string","color":"#hex","done":false},{"day":"Sam","session":"string","detail":"string","color":"#hex","done":false},{"day":"Dim","session":"string","detail":"string","color":"#hex","done":false}]}`;
 
-    const weekRules = ` RÈGLES week[] : contient TOUJOURS EXACTEMENT 7 entrées, dans l'ordre Lun, Mar, Mer, Jeu, Ven, Sam, Dim (semaine ${planNext ? "SUIVANTE" : "en cours"}, du lundi ${planWeekStart} au dimanche). Chaque entrée a "day", "session", "detail", "color", "done". "detail" : UNE ligne qui dit concrètement ce que sera la séance, avec allures et FC du profil (ex. "20' EF, 3x10' seuil 4'40\"-4'50\" FC 158-162, récup 2'30\" trot, 10' retour au calme" ou "10 km EF 6'00\"-6'45\" FC < 140 + 6 lignes droites") ; pour une séance déjà faite, ce qui a été réalisé d'après l'analyse ; "" pour Repos. Format de "session" pour une course : la zone puis la distance, court, ex. "Seuil 10km", "VMA 9km", "EF 10km", "EF + LD 10km", "Récup 6km", "Allure marathon 12km", "SL 18km", "SL 18km dont AM", "Côtes 8km". Jours sans course : "session":"Repos" (ou le cross-training prévu), "color":"#374151", "done":false. "done":true UNIQUEMENT pour les séances déjà réalisées cette semaine. Couleurs : EF/Récup "#60a5fa" · Seuil/Allure spécifique "#fbbf24" · VMA/Fractionné "#f87171" · Côtes "#34d399" · Sortie longue "#a78bfa".`;
+    const weekRules = ` RÈGLES week[] : contient TOUJOURS EXACTEMENT 7 entrées, dans l'ordre Lun, Mar, Mer, Jeu, Ven, Sam, Dim (semaine ${planNext ? "SUIVANTE" : "en cours"}, du lundi ${planWeekStart} au dimanche). Chaque entrée a "day", "session", "detail", "color", "done". "detail" : UNE ligne qui dit concrètement ce que sera la séance, avec allures et FC du profil (ex. "20' EF, 3x10' seuil 4'40\"-4'50\" FC 158-162, récup 2'30\" trot, 10' retour au calme" ou "10 km EF 6'00\"-6'45\" FC < 140 + 6 lignes droites") ; pour une séance déjà faite, ce qui a été réalisé d'après l'analyse ; "" pour Repos. Format de "session" pour une course : la zone puis la distance, court, ex. "Seuil 10km", "VMA 9km", "EF 10km", "EF + LD 10km", "Récup 6km", "Allure marathon 12km", "SL 18km", "SL 18km dont AM", "Côtes 8km". Jours sans course : "session":"Repos" (ou le cross-training prévu), "color":"#D9D3E4", "done":false. "done":true UNIQUEMENT pour les séances déjà réalisées cette semaine. Couleurs : EF/Récup "#2E6BFF" · Seuil/Allure spécifique "#9B4DFF" · VMA/Fractionné/Côtes "#FF2D87" · Sortie longue "#14121C".`;
 
     const baseIdentity = `Tu es un coach de course à pied expert (route et trail). Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : ${RUNNER.identity} · cycle centré sur la course à pied, avec du vélo, de la natation et de la musculation en complément occasionnel.`;
 
     const systemPrompt = isBilan
-      ? `${baseIdentity}${RUNNER_PROMPT}\n${objDesc}.${todayPrompt}${trailGuidance}${repriseGuidance}${chargePrompt}${historyPrompt}${progressionPrompt}${deepPrompt}${ANALYSIS_RULES}${commentPrompt}\nSois honnête et précis, ne surestime pas le niveau actuel (cela ne change pas la règle de l'indice de confiance ci-dessous). ${confidenceRule} Schéma JSON : ${schema}. "verdict" est exactement l'une des trois valeurs : "continuer", "ameliorer" ou "downgrade". "acquis", "atravailler" et "priorites" sont des tableaux de 3 strings courtes.`
+      ? `${baseIdentity}${RUNNER_PROMPT}\n${objDesc}.${todayPrompt}${trailGuidance}${repriseGuidance}${chargePrompt}${historyPrompt}${progressionPrompt}${deepPrompt}${ANALYSIS_RULES}${commentPrompt}\nSois honnête et précis, ne surestime pas le niveau actuel (cela ne change pas la règle de l'indice de confiance ci-dessous). ${confidenceRule} Schéma JSON : ${schema}. "verdict" est exactement l'une des trois valeurs : "continuer", "ameliorer" ou "downgrade". "acquis", "atravailler" et "priorites" sont des tableaux de 3 strings courtes (10 mots maximum chacune). "verdictDetail" : 2 phrases maximum.`
       : `${baseIdentity}${RUNNER_PROMPT}\n${objDesc}.${todayPrompt}${trailGuidance}${repriseGuidance}${chargePrompt}${historyPrompt}${progressionPrompt}${deepPrompt}${ANALYSIS_RULES}${PROGRAM_RULES}${WRITING_RULES}${prefsPrompt || ""}${runsWeekPrompt}${commentPrompt}\n${confidenceRule} Schéma JSON : ${schema} Le champ "nextDay" est le jour de la semaine en français (ex: "Lundi", "Mardi"...) où doit avoir lieu la prochaine séance.${weekRules}`;
 
     const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
@@ -882,15 +933,36 @@ export async function runLastSessionAnalysis(params) {
     const targetProfile = profiles[0];
     const otherProfiles = profiles.slice(1);
 
+    // Dates : aujourd'hui + charge réelle des 7 jours précédant la séance (toutes activités)
+    const ctx = parisContext();
+    const targetIso = targetProfile.iso || ctx.todayIso;
+    const dayOf = (a) => (a.start_date_local || a.start_date || "").slice(0, 10);
+    const weekBefore = acts.filter((a) => {
+      const d = dayOf(a);
+      if (!d || a.id === target.id) return false;
+      const diff = (dayMs(targetIso) - dayMs(d)) / 86400000;
+      return diff >= 0 && diff <= 7;
+    });
+    const loadTxt = weekBefore.length
+      ? weekBefore.map((a) => {
+          const diff = Math.round((dayMs(targetIso) - dayMs(dayOf(a))) / 86400000);
+          const when = diff === 0 ? "le même jour" : `${diff} j avant`;
+          return `- ${dateLabel(dayOf(a))} (${when}) · ${a.sport_type || a.type} · ${(a.distance / 1000).toFixed(1)} km en ${dur(a.moving_time)}${a.suffer_score ? " · effort " + a.suffer_score : ""}`;
+        }).join("\n")
+      : "- aucune activité dans les 7 jours précédents";
+
     const system = `Tu es un coach de course à pied expert. Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans backticks. Athlète : ${RUNNER.identity}.${RUNNER_PROMPT}${ANALYSIS_RULES}
+AUJOURD'HUI : ${ctx.todayFr} (${ctx.todayIso}).
 TÂCHE : analyse détaillée de la séance indiquée, à partir de sa structure RÉELLE mesurée dans les flux Strava (ne te fie ni au titre ni à l'allure moyenne seule).
 - Si une séance était prévue, compare précisément prévu et réalisé (allures, FC, durées, récupérations) et donne un verdict honnête : "reussie", "partielle" ou "ratee". Si rien n'était prévu : "libre", et juge la séance pour ce qu'elle est.
 - Vérifie la stabilisation de la FC dans les blocs longs, la dérive, le temps hors zone ; en footing, signale toute FC au-dessus de ${RUNNER.footingHrAlert}.
 - Compare la FC à allure égale avec les séances récentes fournies pour détecter fatigue ou progrès, en restant prudent (météo inconnue).
-- Vocabulaire du profil (EF, SV1, seuil, allure marathon, allure semi, allure 10 km, VMA, sortie longue, récupération). Jamais "tempo" seul. Concis, pas de répétition entre les champs.
-Schéma JSON : {"title":"string (type réel de la séance, ex: Seuil 3x10')","verdict":"reussie"|"partielle"|"ratee"|"libre","verdictLabel":"string court (ex: Séance réussie)","summary":"string (2 phrases)","planned":"string (ce qui était prévu, '' si rien)","done":"string (1 ligne, ce qui a été réellement couru)","keyNumbers":[{"label":"string","value":"string"}],"blocks":[{"label":"string (ex: Rép 1, Échauffement)","detail":"string"}],"hr":"string (2 phrases sur la FC)","fatigue":"string (1-2 phrases)","positives":["string"],"improve":["string"],"impact":"string (1-2 phrases : conséquence pour les prochaines séances)"}. "keyNumbers" : 4 à 6 chiffres clés. "blocks" : le déroulé réel, un élément par phase ou répétition (10 maximum, regroupe les répétitions semblables si plus). "positives" et "improve" : 1 à 3 éléments chacun. Dans les valeurs JSON, n'utilise JAMAIS le guillemet double pour les secondes : écris les allures 4'45/km et les durées 3'30 ou 3 min 30.`;
+- La charge avant la séance se juge UNIQUEMENT sur la liste "CHARGE DES 7 JOURS PRÉCÉDENTS" (calculée par le serveur, elle fait foi). Les courses de comparaison plus anciennes ne comptent pas dans cette charge.
+- Vocabulaire du profil (EF, SV1, seuil, allure marathon, allure semi, allure 10 km, VMA, sortie longue, récupération). Jamais "tempo" seul.
+- STYLE : l'app s'affiche sur téléphone et doit rester épurée. Phrases courtes, aucun remplissage, pas de répétition entre les champs. Ne nomme pas l'athlète à la 3e personne ("Yann a couru") : écris directement ("seuil couru au lieu de l'EF").
+Schéma JSON : {"title":"string (type réel, 4 mots max, ex: 2 x 8' seuil)","verdict":"reussie"|"partielle"|"ratee"|"libre","verdictLabel":"string (1-2 mots, ex: Réussie, Partielle, Ratée, Libre)","summary":"string (1 phrase)","planned":"string (court, ex: EF · FC < 140 ; '' si rien)","done":"string (court, 8 mots max, ex: 2 x 8' à 4'46, récup trop haute)","keyNumbers":[{"label":"string (2-3 mots)","value":"string (court, ex: 4'46/km, 141, 10,4 km)"}],"blocks":[{"label":"string (ex: Rép 1, Échauffement)","detail":"string (1 ligne)"}],"hr":"string (1-2 phrases sur la FC)","fatigue":"string (1 phrase)","positives":["string"],"improve":["string"],"impact":"string (1 phrase : la conséquence concrète pour la prochaine séance)"}. "keyNumbers" : EXACTEMENT 4 chiffres clés, les plus parlants pour cette séance. "blocks" : le déroulé réel, un élément par phase ou répétition (8 maximum, regroupe les répétitions semblables). "positives" et "improve" : 1 élément chacun (2 au maximum si vraiment nécessaire), 12 mots maximum par élément. Dans les valeurs JSON, n'utilise JAMAIS le guillemet double pour les secondes : écris les allures 4'45/km et les durées 3'30 ou 3 min 30.`;
 
-    const user = `SÉANCE À ANALYSER :\n${targetProfile.text}\n\nSÉANCE PRÉVUE : ${planned && String(planned).trim() ? planned : "aucune séance prévue connue"}\n\n${otherProfiles.length ? "COURSES RÉCENTES POUR COMPARAISON :\n" + otherProfiles.map((p) => p.text).join("\n") : "Pas d'autre course récente."}`;
+    const user = `SÉANCE À ANALYSER :\n${profileText(targetProfile, ctx)}\n\nSÉANCE PRÉVUE : ${planned && String(planned).trim() ? planned : "aucune séance prévue connue"}\n\nCHARGE DES 7 JOURS PRÉCÉDENTS (toutes activités, fait foi) :\n${loadTxt}\n\n${otherProfiles.length ? "COURSES RÉCENTES POUR COMPARAISON (FC à allure égale uniquement) :\n" + otherProfiles.map((p) => profileText(p, ctx)).join("\n") : "Pas d'autre course récente."}`;
 
     const out = await callClaudeJSON(system, user, 3500);
     if (out.error) return reply(502, { error: out.error, detail: out.detail });
