@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#F2EFF7" />
+  <meta name="theme-color" content="#0E0E10" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
   <meta name="apple-mobile-web-app-title" content="Coach" />
   <link rel="manifest" href="/manifest.json" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -13,10 +13,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <title>Coach</title>
   <style>
-    /* v12 : charte claire, angles droits, Unbounded (titres, chiffres) + Inter (texte) */
+    /* v2.2 : charte dark rose électrique / gris / blanc / noir, angles droits, Unbounded (titres, chiffres) + Inter (texte) */
     :root {
-      --bg: #F2EFF7; --card: #FFFFFF; --ink: #14121C; --muted: #5E586F; --line: #E3DEEC; --line2: #EFEBF5; --soft: #E6E1EE;
-      --pink: #FF2D87; --pink-text: #D6006A; --violet: #9B4DFF; --violet-dark: #7B2CFF; --blue: #2E6BFF;
+      --bg: #0E0E10; --card: #1B1B1F; --ink: #F5F5F7; --muted: #A1A1A8; --line: #2C2C31; --line2: #26262B; --soft: #2C2C31;
+      --pink: #FF2D87; --pink-text: #FF4D9A; --black: #111113; --gray: #6E6E76; --gray-dark: #3A3A40; --bar: #55555C;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0; -webkit-tap-highlight-color: transparent; }
     html { background: var(--bg); }
@@ -40,15 +40,16 @@
 
     .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 48px; padding: 0 12px; background: var(--card); border: 1px solid var(--line); color: var(--ink); font-size: 14px; font-weight: 600; text-align: center; line-height: 1.2; }
     .btn-primary { background: var(--pink); border: 0; color: var(--ink); font-family: Unbounded, Inter, sans-serif; font-size: 15px; font-weight: 700; min-height: 52px; }
-    .btn-dark { background: var(--ink); border: 0; color: #FFFFFF; font-weight: 700; }
+    .btn-dark { background: var(--ink); border: 0; color: var(--black); font-weight: 700; }
     .btn-ghost { background: transparent; }
     .btn-danger { background: transparent; color: var(--pink-text); border: 1px solid var(--line); }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 
-    .hero { background: linear-gradient(140deg, #7B2CFF 0%, #3A4BFF 100%); color: #FFFFFF; padding: 22px; }
-    .hero .eyebrow { color: #FFFFFF; }
-    .pill { display: inline-block; background: rgba(11,10,18,0.28); color: #FFFFFF; padding: 8px 12px; font-size: 13px; font-weight: 600; }
+    .hero { background: var(--pink); color: var(--black); padding: 22px; }
+    .hero .eyebrow { color: var(--black); }
+    .hero .btn-primary { background: var(--black); color: #FFFFFF; }
+    .pill { display: inline-block; background: rgba(17,17,19,0.14); color: var(--black); padding: 8px 12px; font-size: 13px; font-weight: 700; }
     .chip { display: inline-block; padding: 6px 10px; font-size: 12px; font-weight: 800; white-space: nowrap; }
     .tag { display: inline-block; padding: 3px 8px; font-size: 12px; font-weight: 700; background: var(--bg); color: var(--ink); margin: 6px 6px 0 0; }
 
@@ -66,12 +67,12 @@
 
     .seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--card); padding: 4px; margin-bottom: 22px; }
     .seg button { min-height: 40px; font-size: 14px; font-weight: 600; color: var(--muted); }
-    .seg button.on { background: var(--ink); color: #FFFFFF; font-weight: 700; }
+    .seg button.on { background: var(--ink); color: var(--black); font-weight: 700; }
 
     .backbar { display: flex; align-items: center; gap: 6px; margin: -6px 0 16px -6px; }
     .backbar button { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; color: var(--ink); min-height: 44px; padding: 0 6px; }
 
-    .tabbar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 430px; background: #FFFFFF; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(4, 1fr); padding: 6px 0 calc(6px + env(safe-area-inset-bottom)); z-index: 50; }
+    .tabbar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 430px; background: var(--bg); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(4, 1fr); padding: 6px 0 calc(6px + env(safe-area-inset-bottom)); z-index: 50; }
     .tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 52px; font-size: 11px; font-weight: 600; color: var(--muted); }
     .tab.on { color: var(--pink-text); font-weight: 700; }
 
@@ -81,20 +82,20 @@
     .bullet .t { font-size: 15px; line-height: 1.45; padding-top: 2px; }
     .sq { width: 8px; height: 8px; flex-shrink: 0; margin-top: 7px; }
 
-    .dialog-overlay { position: fixed; inset: 0; background: rgba(20,18,28,0.55); display: flex; align-items: flex-end; justify-content: center; z-index: 100; padding: 0 0 env(safe-area-inset-bottom); animation: fadeUp 0.2s ease both; }
-    .dialog-box, .confirm-box { background: #FFFFFF; padding: 24px 20px 32px; width: 100%; max-width: 430px; }
+    .dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: flex; align-items: flex-end; justify-content: center; z-index: 100; padding: 0 0 env(safe-area-inset-bottom); animation: fadeUp 0.2s ease both; }
+    .dialog-box, .confirm-box { background: var(--card); padding: 24px 20px 32px; width: 100%; max-width: 430px; }
     .dialog-title, .confirm-title { font-family: Unbounded, Inter, sans-serif; font-size: 17px; font-weight: 700; margin-bottom: 8px; }
     .dialog-sub, .confirm-sub { font-size: 14px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
     .dialog-textarea { width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--ink); font-size: 15px; padding: 14px; resize: none; outline: none; line-height: 1.5; min-height: 110px; }
-    .dialog-textarea:focus, .obj-input:focus { border-color: var(--violet-dark); }
+    .dialog-textarea:focus, .obj-input:focus { border-color: var(--pink); }
     .dialog-actions, .confirm-actions { display: flex; gap: 8px; margin-top: 12px; }
     .dialog-actions .btn, .confirm-actions .btn { flex: 1; }
 
     .obj-input { width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--ink); font-size: 16px; padding: 12px; outline: none; min-height: 48px; }
-    .obj-input::placeholder { color: #8A849B; }
+    .obj-input::placeholder { color: var(--gray); }
     .obj-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px; font-weight: 700; }
     .pick { min-height: 48px; border: 2px solid var(--line); background: var(--card); font-size: 15px; font-weight: 700; color: var(--muted); }
-    .pick.on { border-color: var(--ink); background: var(--ink); color: #FFFFFF; }
+    .pick.on { border-color: var(--ink); background: var(--ink); color: var(--black); }
   </style>
 </head>
 <body>
@@ -115,11 +116,12 @@
          navigation par onglets (Séance, Semaine, Analyses, Profil), écrans épurés,
          fiche coureur réorganisée et synchronisée depuis le serveur.
    v13 : compteur km réalisés / prévus de la semaine (accueil + Semaine), km affichés sur chaque barre du graphe.
+   v14 (2.2.0) : charte dark (rose électrique, gris, blanc, noir), plus de violet ni de bleu.
    ============================================================ */
-const APP_VERSION = 13;          // numéro interne, sert uniquement aux migrations du stockage local
+const APP_VERSION = 14;          // numéro interne, sert uniquement aux migrations du stockage local
 // Version affichée : x.y.z  (x = refonte, y = nouvelle fonctionnalité, z = correctif)
-// 2.0.0 = nouvelle charte et onglets · 2.1.0 = compteur km semaine et km sur le graphe
-const APP_LABEL = '2.1.0';
+// 2.0.0 = nouvelle charte et onglets · 2.1.0 = compteur km semaine et km sur le graphe · 2.2.0 = charte dark rose / gris / blanc / noir
+const APP_LABEL = '2.2.0';
 (function migrate() {
   const v = parseInt(localStorage.getItem('mc_app_version') || '1', 10);
   if (v < 3) {
@@ -407,12 +409,12 @@ function extractKm(session) {
 function normalizeRun(s) {
   if (!s) return null;
   const sl = s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  if (/(sortie longue|long run|\bsl\b|rando course|rando-course)/.test(sl)) return { label:'Sortie longue', color:'#14121C' };
+  if (/(sortie longue|long run|\bsl\b|rando course|rando-course)/.test(sl)) return { label:'Sortie longue', color:'outline' };
   if (/(cote|denivele|grimpe|montee)/.test(sl)) return { label:'Côtes', color:'#FF2D87' };
   if (/(fractionn|interval|vma|repet|fartlek|30\/30)/.test(sl)) return { label:'VMA', color:'#FF2D87' };
-  if (/(seuil|sv2)/.test(sl)) return { label:'Seuil', color:'#9B4DFF' };
-  if (/(allure marathon|allure semi|allure 10|allure spe|\bam\b|tempo|resistance|allure trail)/.test(sl)) return { label:'Allure spé', color:'#9B4DFF' };
-  if (/(footing|\bef\b|endurance|recup|regen|fond|sv1|lignes droites)/.test(sl)) return { label:'EF', color:'#2E6BFF' };
+  if (/(seuil|sv2)/.test(sl)) return { label:'Seuil', color:'#F5F5F7' };
+  if (/(allure marathon|allure semi|allure 10|allure spe|\bam\b|tempo|resistance|allure trail)/.test(sl)) return { label:'Allure spé', color:'#F5F5F7' };
+  if (/(footing|\bef\b|endurance|recup|regen|fond|sv1|lignes droites)/.test(sl)) return { label:'EF', color:'#6E6E76' };
   return null;
 }
 
@@ -700,11 +702,11 @@ function backBar(label, to, patch) {
 
 function verdictStyle(v) {
   return {
-    reussie:   { bg:'#2E6BFF', fg:'#FFFFFF' },
-    partielle: { bg:'#7B2CFF', fg:'#FFFFFF' },
-    ratee:     { bg:'#FF2D87', fg:'#14121C' },
-    libre:     { bg:'#14121C', fg:'#FFFFFF' },
-  }[v] || { bg:'#14121C', fg:'#FFFFFF' };
+    reussie:   { bg:'#F5F5F7', fg:'#111113' },
+    partielle: { bg:'#FF2D87', fg:'#111113' },
+    ratee:     { bg:'#3A3A40', fg:'#FF4D9A' },
+    libre:     { bg:'#3A3A40', fg:'#F5F5F7' },
+  }[v] || { bg:'#3A3A40', fg:'#F5F5F7' };
 }
 function verdictChip(a) {
   const st = verdictStyle(a.verdict);
@@ -817,7 +819,7 @@ function renderHome() {
   const noRun = daysSinceLastRun();
   const alertEl = (noRun !== null && noRun >= 4)
     ? h('div', {class:'card', style:{marginTop:'8px',display:'flex',gap:'12px',alignItems:'center'}},
-        h('span', {style:{width:'26px',height:'26px',background:'var(--pink)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:'0'}}, icon('alert', 16, '#14121C', 3)),
+        h('span', {style:{width:'26px',height:'26px',background:'var(--pink)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:'0'}}, icon('alert', 16, '#111113', 3)),
         h('div', {style:{fontSize:'14px',lineHeight:'1.4'}}, h('b', null, noRun + ' jours sans course.'), ' Reprise en douceur.'))
     : null;
 
@@ -895,7 +897,7 @@ function volumeChart() {
     const showLab = cur || i % 3 === 0;
     return h('div', {style:{flex:'1',display:'flex',flexDirection:'column',justifyContent:'flex-end',alignItems:'center',height:'150px',minWidth:'0'}},
       h('div', {style:{fontSize: cur ? '11px' : '10px',fontWeight: cur ? '800' : '600',color: cur ? 'var(--ink)' : 'var(--muted)',marginBottom:'4px',whiteSpace:'nowrap',letterSpacing:'-0.3px'}}, km > 0 ? (cur ? fmtKm(km) : String(Math.round(km))) : '0'),
-      h('div', {title: fmtKm(km) + ' km', style:{width:'100%',height:(km > 0 ? Math.max(4, Math.round(km / maxV * 100)) : 2)+'px',background: km > 0 ? (cur ? 'var(--pink)' : 'var(--violet)') : 'var(--soft)'}}),
+      h('div', {title: fmtKm(km) + ' km', style:{width:'100%',height:(km > 0 ? Math.max(4, Math.round(km / maxV * 100)) : 2)+'px',background: km > 0 ? (cur ? 'var(--pink)' : 'var(--bar)') : 'var(--soft)'}}),
       h('div', {class:'muted', style:{fontSize:'10px',marginTop:'6px',height:'12px',whiteSpace:'nowrap'}}, showLab ? lab(v.start) : ''));
   });
   return h('div', null,
@@ -922,7 +924,7 @@ function footerLine() {
 // Couleur d'un bloc : échauffement bleu, retour au calme bleu, corps de séance couleur du type
 function phaseColor(phase, mainColor) {
   const p = (phase || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  if (p.indexOf('chauff') >= 0 || p.indexOf('calme') >= 0) return '#2E6BFF';
+  if (p.indexOf('chauff') >= 0 || p.indexOf('calme') >= 0) return '#6E6E76';
   return mainColor;
 }
 
@@ -930,7 +932,7 @@ function renderResult() {
   const d = currentResult();
   if (!d) return renderHome();
   const typeRun = normalizeRun(d.type || '') || normalizeRun(d.headline || '');
-  const main = typeRun && typeRun.color !== '#14121C' ? typeRun.color : '#7B2CFF';
+  const main = typeRun && typeRun.color !== 'outline' ? typeRun.color : '#F5F5F7';
 
   const stats = [];
   if (has(d.distance)) stats.push(['Distance', d.distance]);
@@ -966,8 +968,8 @@ function renderResult() {
     })) : null,
     structure ? h('div', {class:'sec'}, h('div', {class:'eyebrow'}, 'Déroulé')) : null,
     structure,
-    has(d.success) ? h('div', {class:'card', style:{marginTop:'8px',background:'var(--ink)',color:'#FFFFFF'}},
-      h('div', {class:'eyebrow', style:{color:'#FFFFFF',marginBottom:'6px'}}, 'Réussie si'),
+    has(d.success) ? h('div', {class:'card', style:{marginTop:'8px',background:'var(--ink)',color:'var(--black)'}},
+      h('div', {class:'eyebrow', style:{color:'var(--black)',marginBottom:'6px'}}, 'Réussie si'),
       h('div', {style:{fontSize:'15px',lineHeight:'1.45'}}, d.success)) : null,
     h('button', {class:'btn', style:{marginTop:'8px'}, onclick:function(){ setState({ more: !state.more }); }},
       state.more ? 'Masquer les détails' : 'Pourquoi, nutrition, équipement', icon(state.more ? 'up' : 'down', 18)),
@@ -1031,17 +1033,17 @@ function renderWeek() {
     if (!run) {
       return h('div', {style:{display:'flex',alignItems:'center',gap:'14px',padding:'10px 14px'}},
         h('div', {style:{width:'34px',fontSize:'13px',fontWeight:'700',color:'var(--muted)'}}, w.day),
-        h('div', {style:{width:'6px',height:'6px',background:'#D9D3E4'}}),
+        h('div', {style:{width:'6px',height:'6px',background:'var(--line)'}}),
         h('div', {class:'muted', style:{flex:'1',fontSize:'14px'}}, w.session || 'Repos'));
     }
     const detail = has(w.detail) ? w.detail : 'Détail indisponible : recalcule la séance pour l\'obtenir.';
-    return h('div', {style:{background:'var(--card)',border: isNext ? '2px solid var(--blue)' : '2px solid transparent'}},
+    return h('div', {style:{background:'var(--card)',border: isNext ? '2px solid var(--pink)' : '2px solid transparent'}},
       h('button', {onclick:function(){ toggleWeekDetail(w.day); }, 'aria-expanded': open ? 'true' : 'false', style:{display:'flex',alignItems:'center',gap:'14px',width:'100%',padding:'12px',textAlign:'left',minHeight:'54px'}},
         h('div', {style:{width:'34px',fontSize:'13px',fontWeight:'700',color: isNext ? 'var(--ink)' : 'var(--muted)'}}, w.day),
-        h('div', {style:{width:'6px',height:'30px',background:run.color,flexShrink:'0'}}),
+        h('div', {style:{width:'6px',height:'30px',background: run.color === 'outline' ? 'transparent' : run.color,border: run.color === 'outline' ? '2px solid #F5F5F7' : '0',boxSizing:'border-box',flexShrink:'0'}}),
         h('div', {style:{flex:'1',fontSize:'15px',fontWeight: isNext ? '700' : '600',minWidth:'0'}}, w.session),
-        w.done ? h('span', {role:'img','aria-label':'Faite',style:{display:'inline-flex'}}, icon('check', 20, '#5E586F', 2.5))
-          : isNext ? h('span', {style:{fontSize:'12px',fontWeight:'700',color:'var(--blue)'}}, 'À venir') : null),
+        w.done ? h('span', {role:'img','aria-label':'Faite',style:{display:'inline-flex'}}, icon('check', 20, '#A1A1A8', 2.5))
+          : isNext ? h('span', {style:{fontSize:'12px',fontWeight:'700',color:'var(--pink-text)'}}, 'À venir') : null),
       open ? h('div', {style:{padding:'0 14px 14px 68px',fontSize:'14px',lineHeight:'1.5',color:'var(--ink)'}}, detail) : null);
   });
 
@@ -1095,13 +1097,13 @@ function lastBody() {
         h('div', {class:'eyebrow', style:{width:'60px',flexShrink:'0'}}, 'Fait'), h('div', {style:{fontSize:'14px',fontWeight:'600',lineHeight:'1.4'}}, a.done)) : null) : null,
     (pos.length || imp.length) ? h('div', {style:{margin:'20px 0'}},
       pos.map(function(t) {
-        return h('div', {class:'bullet'}, h('span', {class:'ic', style:{background:'var(--blue)'}}, icon('check', 16, '#FFFFFF', 3)), h('div', {class:'t'}, t));
+        return h('div', {class:'bullet'}, h('span', {class:'ic', style:{background:'var(--ink)'}}, icon('check', 16, '#111113', 3)), h('div', {class:'t'}, t));
       }),
       imp.map(function(t) {
-        return h('div', {class:'bullet'}, h('span', {class:'ic', style:{background:'var(--pink)'}}, icon('alert', 16, '#14121C', 3)), h('div', {class:'t'}, t));
+        return h('div', {class:'bullet'}, h('span', {class:'ic', style:{background:'var(--pink)'}}, icon('alert', 16, '#111113', 3)), h('div', {class:'t'}, t));
       })) : null,
-    has(a.impact) ? h('div', {class:'card', style:{background:'#E9DEFF'}},
-      h('div', {class:'eyebrow', style:{color:'var(--violet-dark)',marginBottom:'6px'}}, 'Pour la suite'),
+    has(a.impact) ? h('div', {class:'card', style:{background:'#2A1420'}},
+      h('div', {class:'eyebrow', style:{color:'var(--pink-text)',marginBottom:'6px'}}, 'Pour la suite'),
       h('div', {style:{fontSize:'15px',lineHeight:'1.45'}}, a.impact)) : null,
     h('button', {class:'btn', style:{marginTop:'8px'}, onclick:function(){ setState({ more: !state.more }); }},
       state.more ? 'Masquer le détail' : 'Voir le détail', icon(state.more ? 'up' : 'down', 18)),
@@ -1132,9 +1134,9 @@ function bilanBody() {
   const d = B.result;
   const objSet = hasObjective();
   const verdicts = {
-    continuer: { label:'Objectif tenable', bg:'#2E6BFF', fg:'#FFFFFF' },
-    ameliorer: { label:'Tu peux viser plus', bg:'#7B2CFF', fg:'#FFFFFF' },
-    downgrade: { label:'Objectif à revoir', bg:'#FF2D87', fg:'#14121C' },
+    continuer: { label:'Objectif tenable', bg:'#F5F5F7', fg:'#111113' },
+    ameliorer: { label:'Tu peux viser plus', bg:'#FF2D87', fg:'#111113' },
+    downgrade: { label:'Objectif à revoir', bg:'#3A3A40', fg:'#FF4D9A' },
   };
   const v = verdicts[d.verdict];
   const conf = (objSet && d.confidence !== undefined && d.confidence !== null) ? d.confidence : null;
@@ -1149,7 +1151,7 @@ function bilanBody() {
   return h('div', null,
     h('div', {class:'eyebrow'}, 'Bilan · il y a ' + formatAge(B.savedAt)),
     h('div', {class:'h1', style:{margin:'8px 0 12px'}}, d.niveau || 'Bilan'),
-    has(d.tendance) ? h('span', {class:'chip', style:{background:'var(--ink)',color:'#FFFFFF'}}, d.tendance) : null,
+    has(d.tendance) ? h('span', {class:'chip', style:{background:'var(--ink)',color:'var(--black)'}}, d.tendance) : null,
     (objSet && v) ? h('div', {class:'card', style:{marginTop:'16px',background:v.bg,color:v.fg}},
       h('div', {class:'d', style:{fontSize:'17px',fontWeight:'700',marginBottom:'6px'}}, v.label),
       has(d.verdictDetail) ? h('div', {style:{fontSize:'14px',lineHeight:'1.5'}}, d.verdictDetail) : null) : null,
@@ -1158,16 +1160,16 @@ function bilanBody() {
         h('div', {class:'eyebrow'}, 'Indice de confiance'),
         h('div', {class:'d', style:{fontSize:'20px',fontWeight:'800'}}, conf + ' %')),
       h('div', {style:{height:'8px',background:'var(--soft)'}}, h('div', {style:{height:'100%',width:conf+'%',background:'var(--pink)'}}))) : null,
-    list('Acquis', d.acquis, 'var(--blue)'),
+    list('Acquis', d.acquis, 'var(--ink)'),
     list('À travailler', d.atravailler, 'var(--pink)'),
-    list('Priorités 4 semaines', d.priorites, 'var(--violet)'),
+    list('Priorités 4 semaines', d.priorites, 'var(--gray)'),
     h('button', {class:'btn', style:{marginTop:'16px'}, onclick:function(){ analyzeWithComment('bilan'); }}, 'Refaire un bilan'));
 }
 
 /* ============================================================
    Onglet PROFIL : fiche coureur + réglages
    ============================================================ */
-const ZONE_COLORS = ['#2E6BFF', '#5B6BFF', '#9B4DFF', '#D23FC8', '#FF2D87'];
+const ZONE_COLORS = ['#4A4A50', '#6E6E76', '#A1A1A8', '#FF8FBF', '#FF2D87'];
 
 function renderProfil() {
   const r = loadRunner();
@@ -1193,8 +1195,8 @@ function renderProfil() {
           h('div', {class:'eyebrow'}, 'VMA'),
           h('div', {class:'d', style:{fontSize:'28px',fontWeight:'800',marginTop:'8px'}}, r.vmaKmh),
           h('div', {style:{fontSize:'13px',fontWeight:'600',marginTop:'2px'}}, 'km/h · ' + r.vmaPace + ' /km')),
-        h('div', {style:{background:'var(--pink)',color:'#14121C',padding:'16px'}},
-          h('div', {class:'eyebrow', style:{color:'#14121C'}}, 'FC max'),
+        h('div', {style:{background:'var(--gray-dark)',color:'var(--ink)',padding:'16px'}},
+          h('div', {class:'eyebrow', style:{color:'var(--ink)'}}, 'FC max'),
           h('div', {class:'d', style:{fontSize:'28px',fontWeight:'800',marginTop:'8px'}}, String(r.hrMax)),
           h('div', {style:{fontSize:'13px',fontWeight:'600',marginTop:'2px'}}, 'bpm · ' + (r.hrMaxNote || '')))),
       h('div', {class:'muted', style:{fontSize:'12px',marginTop:'8px'}}, 'Mis à jour le ' + (r.updated || '?')),
@@ -1206,24 +1208,24 @@ function renderProfil() {
 
       h('div', {class:'sec'}, h('div', {class:'eyebrow'}, 'Zones de FC'), h('div', {class:'muted', style:{fontSize:'12px'}}, 'bpm')),
       h('div', {style:{display:'flex',height:'12px',marginBottom:'8px'}}, zs.map(function(z, i) {
-        return h('div', {style:{flex:String(spans[i]),background:ZONE_COLORS[i] || '#9B4DFF'}});
+        return h('div', {style:{flex:String(spans[i]),background:ZONE_COLORS[i] || '#6E6E76'}});
       })),
       h('div', {class:'card', style:{padding:'4px 18px'}}, zs.map(function(z, i) {
         return h('div', {class:'row'},
-          h('span', {style:{display:'flex',alignItems:'center',gap:'12px'}}, h('span', {style:{width:'10px',height:'10px',background:ZONE_COLORS[i] || '#9B4DFF',flexShrink:'0'}}), h('span', {class:'k'}, z.name)),
+          h('span', {style:{display:'flex',alignItems:'center',gap:'12px'}}, h('span', {style:{width:'10px',height:'10px',background:ZONE_COLORS[i] || '#6E6E76',flexShrink:'0'}}), h('span', {class:'k'}, z.name)),
           h('span', {class:'v'}, z.range));
       })),
 
       h('div', {class:'sec'}, h('div', {class:'eyebrow'}, 'Profil')),
       h('div', {class:'card'}, (r.profile || []).map(function(p, i) {
-        const c = ['var(--blue)', 'var(--pink-text)', 'var(--violet-dark)'][i] || 'var(--ink)';
+        const c = ['var(--ink)', 'var(--pink-text)', 'var(--muted)'][i] || 'var(--ink)';
         return h('div', {style:{fontSize:'14px',lineHeight:'1.5',marginTop: i ? '8px' : '0'}}, h('b', {style:{color:c}}, p.label), ' · ' + p.text);
       })),
 
       h('button', {class:'link', style:{marginTop:'8px'}, 'aria-expanded': state.more ? 'true' : 'false', onclick:function(){ setState({ more: !state.more }); }},
         h('span', null, 'Tests et références'), h('span', {class:'s', style:{display:'flex',alignItems:'center',gap:'6px'}}, String((r.tests || []).length), icon(state.more ? 'up' : 'down', 18))),
       state.more ? h('div', {class:'card', style:{marginTop:'2px'}}, (r.tests || []).map(function(t, i) {
-        return h('div', {style:{display:'flex',gap:'12px',marginTop: i ? '10px' : '0'}}, h('span', {class:'sq', style:{background:'var(--violet)'}}), h('div', {style:{fontSize:'14px',lineHeight:'1.45'}}, t));
+        return h('div', {style:{display:'flex',gap:'12px',marginTop: i ? '10px' : '0'}}, h('span', {class:'sq', style:{background:'var(--gray)'}}), h('div', {style:{fontSize:'14px',lineHeight:'1.45'}}, t));
       })) : null);
   }
 
@@ -1466,7 +1468,7 @@ function renderStatus() {
   const st = loadStatus() || {};
   const key = !!getAppKey();
   const sync = syncStatus();
-  const GOOD = 'var(--blue)', BAD = 'var(--pink-text)', WAIT = 'var(--violet-dark)';
+  const GOOD = 'var(--ink)', BAD = 'var(--pink-text)', WAIT = 'var(--muted)';
   const line = function(label, value, color) {
     return h('div', {class:'row'}, h('span', {class:'k'}, label), h('span', {class:'v', style:{color: color || 'var(--ink)'}}, value));
   };
