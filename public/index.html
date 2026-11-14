@@ -114,8 +114,12 @@
    v12 : nouvelle charte (claire, rose / violet / bleu électriques, angles droits, Unbounded + Inter),
          navigation par onglets (Séance, Semaine, Analyses, Profil), écrans épurés,
          fiche coureur réorganisée et synchronisée depuis le serveur.
+   v13 : compteur km réalisés / prévus de la semaine (accueil + Semaine), km affichés sur chaque barre du graphe.
    ============================================================ */
-const APP_VERSION = 12;
+const APP_VERSION = 13;          // numéro interne, sert uniquement aux migrations du stockage local
+// Version affichée : x.y.z  (x = refonte, y = nouvelle fonctionnalité, z = correctif)
+// 2.0.0 = nouvelle charte et onglets · 2.1.0 = compteur km semaine et km sur le graphe
+const APP_LABEL = '2.1.0';
 (function migrate() {
   const v = parseInt(localStorage.getItem('mc_app_version') || '1', 10);
   if (v < 3) {
@@ -836,8 +840,45 @@ function renderHome() {
     head, hero, actions, alertEl,
     h('div', {class:'sec'}, h('div', {class:'eyebrow'}, 'Dernière séance')),
     lastEl,
+    (function() {
+      const p = kmProgress(weekKmInfo(), false);
+      return p ? h('div', null,
+        h('div', {class:'sec'}, h('div', {class:'eyebrow'}, 'Cette semaine')),
+        h('button', {class:'card', style:{display:'block',width:'100%',textAlign:'left'}, onclick:function(){ setState({ view:'week' }); }}, p)) : null;
+    })(),
     volumeChart(),
     footerLine());
+}
+
+// Km réalisés / prévus de la semaine en cours
+// prévu = somme des km écrits dans le programme (séances faites et à venir) ; null si le programme n'est pas celui de cette semaine
+function weekKmInfo() {
+  const week = loadWeeklyPlan();
+  const kind = planWeekKind();
+  const done = loadWeekDone();
+  let planned = null;
+  if (week && week.length && kind === 'current') {
+    planned = week.filter(function(w){ return normalizeRun(w.session); }).reduce(function(s, w) {
+      const km = parseFloat((extractKm(w.session) || '0').replace(',', '.'));
+      return s + (isNaN(km) ? 0 : km);
+    }, 0);
+    planned = planned > 0 ? Math.round(planned * 10) / 10 : null;
+  }
+  return { done: done, planned: planned, kind: kind };
+}
+
+// Compteur : "26,6 / 36 km" + barre de progression
+function kmProgress(info, big) {
+  if (info.done === null && info.planned === null) return null;
+  const done = info.done || 0;
+  const pct = info.planned ? Math.min(100, Math.round(done / info.planned * 100)) : null;
+  return h('div', null,
+    h('div', {style:{display:'flex',alignItems:'baseline',gap:'6px'}},
+      h('span', {class:'d', style:{fontSize: big ? '26px' : '22px',fontWeight:'800'}}, fmtKm(done)),
+      h('span', {class:'d', style:{fontSize: big ? '17px' : '15px',fontWeight:'700',color:'var(--muted)'}}, info.planned ? '/ ' + fmtKm(info.planned) + ' km' : 'km'),
+      pct !== null ? h('span', {style:{marginLeft:'auto',fontSize:'13px',fontWeight:'700',color:'var(--pink-text)'}}, pct + ' %') : null),
+    pct !== null ? h('div', {style:{height:'8px',background:'var(--soft)',marginTop:'10px'}}, h('div', {style:{height:'100%',width:pct+'%',background:'var(--pink)'}})) : null,
+    h('div', {class:'muted', style:{fontSize:'12px',marginTop:'8px'}}, info.planned ? 'réalisés / prévus au programme' : 'réalisés cette semaine'));
 }
 
 // Graphe du volume de course, 12 dernières semaines (donnée brute, sans commentaire)
@@ -852,14 +893,14 @@ function volumeChart() {
     const cur = i === vol.length - 1;
     const km = v.km || 0;
     const showLab = cur || i % 3 === 0;
-    return h('div', {style:{flex:'1',display:'flex',flexDirection:'column',justifyContent:'flex-end',alignItems:'center',height:'136px',minWidth:'0'}},
-      cur ? h('div', {style:{fontSize:'11px',fontWeight:'700',marginBottom:'4px',whiteSpace:'nowrap'}}, fmtKm(km)) : null,
+    return h('div', {style:{flex:'1',display:'flex',flexDirection:'column',justifyContent:'flex-end',alignItems:'center',height:'150px',minWidth:'0'}},
+      h('div', {style:{fontSize: cur ? '11px' : '10px',fontWeight: cur ? '800' : '600',color: cur ? 'var(--ink)' : 'var(--muted)',marginBottom:'4px',whiteSpace:'nowrap',letterSpacing:'-0.3px'}}, km > 0 ? (cur ? fmtKm(km) : String(Math.round(km))) : '0'),
       h('div', {title: fmtKm(km) + ' km', style:{width:'100%',height:(km > 0 ? Math.max(4, Math.round(km / maxV * 100)) : 2)+'px',background: km > 0 ? (cur ? 'var(--pink)' : 'var(--violet)') : 'var(--soft)'}}),
       h('div', {class:'muted', style:{fontSize:'10px',marginTop:'6px',height:'12px',whiteSpace:'nowrap'}}, showLab ? lab(v.start) : ''));
   });
   return h('div', null,
     h('div', {class:'sec'},
-      h('div', {class:'eyebrow'}, 'Volume · 12 semaines'),
+      h('div', {class:'eyebrow'}, 'Volume · 12 semaines · km'),
       avg !== null ? h('div', {class:'muted', style:{fontSize:'12px'}}, 'moy. 4 sem. ', h('b', {style:{color:'var(--ink)'}}, fmtKm(avg) + ' km')) : null),
     h('div', {class:'card', style:{padding:'14px 14px 10px'}},
       h('div', {style:{display:'flex',gap:'5px',alignItems:'flex-end'}}, bars)));
@@ -872,7 +913,7 @@ function footerLine() {
     : sync === 'off' ? 'serveur indisponible'
     : sync === 'err' ? 'serveur injoignable' : 'synchro…';
   return h('button', {onclick:function(){ openStatus(); }, style:{display:'block',width:'100%',textAlign:'center',fontSize:'11px',color:'var(--muted)',marginTop:'22px',minHeight:'44px'}},
-    'Coach v' + APP_VERSION + ' · ' + txt + ' · état');
+    'Coach v' + APP_LABEL + ' · ' + txt + ' · état');
 }
 
 /* ============================================================
@@ -974,12 +1015,13 @@ function renderWeek() {
     if (i > 0 && i <= 26) { title = logic.slice(0, i); sub = logic.slice(i + 3); sub = sub.charAt(0).toUpperCase() + sub.slice(1); }
   }
   const runs = week.filter(function(w){ return normalizeRun(w.session); });
-  const doneKm = kind === 'current' ? loadWeekDone() : null;
   const plannedKm = runs.reduce(function(s, w) {
     const km = parseFloat((extractKm(w.session) || '0').replace(',', '.'));
     return s + (isNaN(km) ? 0 : km);
   }, 0);
-  const kmTxt = doneKm !== null ? fmtKm(doneKm) + ' km' : plannedKm > 0 ? fmtKm(Math.round(plannedKm)) + ' km prévus' : '';
+  // Semaine en cours : le compteur réalisé / prévu remplace le total ; sinon total prévu
+  const kmTxt = kind === 'current' ? '' : plannedKm > 0 ? fmtKm(Math.round(plannedKm)) + ' km prévus' : '';
+  const progress = kind === 'current' ? kmProgress(weekKmInfo(), true) : null;
   const nextAbbr = d && d.nextDay ? Object.keys(DAY_FULL).find(function(k){ return DAY_FULL[k] === d.nextDay; }) : null;
 
   const rows = week.map(function(w) {
@@ -1009,6 +1051,7 @@ function renderWeek() {
       h('div', {class:'h1'}, title),
       kmTxt ? h('div', {class:'d', style:{fontSize:'17px',fontWeight:'700',color:'var(--pink-text)',whiteSpace:'nowrap'}}, kmTxt) : null),
     sub ? h('div', {class:'muted', style:{fontSize:'14px',lineHeight:'1.45'}}, sub) : null,
+    progress ? h('div', {class:'card', style:{marginTop:'16px'}}, progress) : null,
     kind === 'past' ? h('div', {class:'card', style:{marginTop:'12px',fontSize:'14px'}}, 'Programme périmé : recalcule ta séance pour le mettre à jour.') : null,
     h('div', {style:{display:'flex',flexDirection:'column',gap:'6px',marginTop:'20px'}}, rows),
     h('div', {class:'muted', style:{fontSize:'12px',marginTop:'12px'}}, 'Touche une séance pour voir son contenu.'));
@@ -1444,7 +1487,7 @@ function renderStatus() {
     backBar('Profil', 'profil'),
     h('div', {class:'h1', style:{marginBottom:'16px'}}, 'État du coach'),
     h('div', {class:'card', style:{padding:'4px 18px'}},
-      line('Version de l\'app', 'v' + APP_VERSION),
+      line('Version de l\'app', 'v' + APP_LABEL),
       line('Serveur', sync === 'ok' ? 'relié' : sync === null ? 'non relié' : sync === 'err' ? 'injoignable' : 'indisponible', sync === 'ok' ? GOOD : BAD),
       line('Détection auto', hookTxt, hookColor),
       line('Dernière activité reçue', st.lastEvent ? fmtDateTime(st.lastEvent.at) : 'aucune'),
