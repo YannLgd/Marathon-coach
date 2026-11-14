@@ -2,8 +2,10 @@
 // GET  : derniers résultats sauvegardés côté serveur (séance/semaine, bilan, dernière séance, état).
 // POST : met à jour objectif et préférences sans lancer d'analyse.
 // Protégé par la clé de l'app (en-tête x-app-key).
+// v12 : renvoie aussi la fiche coureur (api/_lib/runner.js), toujours à jour sans relancer d'analyse.
 
 import { KEYS, storeEnabled, checkAppKey, getJSON, setJSON } from "./_lib/store.js";
+import { RUNNER_CARD } from "./_lib/coach.js";
 
 export default async function handler(req, res) {
   if (!storeEnabled()) return res.status(503).json({ error: "Stockage serveur non configuré" });
@@ -16,7 +18,7 @@ export default async function handler(req, res) {
       const [result, bilan, strava, last, status] = await Promise.all([
         getJSON(KEYS.result), getJSON(KEYS.bilan), getJSON(KEYS.strava), getJSON(KEYS.last), getJSON(KEYS.status),
       ]);
-      return res.json({ ok: true, stravaLinked: !!(strava && strava.refresh_token), result, bilan, last, status });
+      return res.json({ ok: true, stravaLinked: !!(strava && strava.refresh_token), result, bilan, last, status, runner: RUNNER_CARD });
     }
     if (req.method === "POST") {
       const b = req.body || {};
