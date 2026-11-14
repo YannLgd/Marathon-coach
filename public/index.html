@@ -3,63 +3,98 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#07090f" />
+  <meta name="theme-color" content="#F2EFF7" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Coach" />
   <link rel="manifest" href="/manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <title>Coach</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-    body { background: #07090f; color: #e2e8f0; font-family: -apple-system, 'Inter', system-ui, sans-serif; min-height: 100vh; max-width: 430px; margin: 0 auto; padding-bottom: 40px; padding-top: env(safe-area-inset-top); }
-    button { border: none; cursor: pointer; font-family: inherit; }
-    input { font-family: inherit; }
-    @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+    /* v12 : charte claire, angles droits, Unbounded (titres, chiffres) + Inter (texte) */
+    :root {
+      --bg: #F2EFF7; --card: #FFFFFF; --ink: #14121C; --muted: #5E586F; --line: #E3DEEC; --line2: #EFEBF5; --soft: #E6E1EE;
+      --pink: #FF2D87; --pink-text: #D6006A; --violet: #9B4DFF; --violet-dark: #7B2CFF; --blue: #2E6BFF;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0; -webkit-tap-highlight-color: transparent; }
+    html { background: var(--bg); }
+    body { background: var(--bg); color: var(--ink); font-family: Inter, -apple-system, system-ui, sans-serif; font-size: 15px; min-height: 100vh; max-width: 430px; margin: 0 auto; padding-top: env(safe-area-inset-top); padding-bottom: calc(92px + env(safe-area-inset-bottom)); -webkit-font-smoothing: antialiased; }
+    body.no-tabs { padding-bottom: 40px; }
+    button { border: none; cursor: pointer; font-family: inherit; color: inherit; background: none; }
+    input, textarea { font-family: inherit; }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .fade { animation: fadeUp 0.35s ease both; }
+    .fade { animation: fadeUp 0.3s ease both; }
 
-    .dialog-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.75);
-      display: flex; align-items: flex-end; justify-content: center;
-      z-index: 100; padding: 0 0 env(safe-area-inset-bottom);
-      animation: fadeUp 0.2s ease both;
-    }
-    .dialog-box {
-      background: #1e293b; border-radius: 20px 20px 0 0;
-      padding: 24px 20px 32px; width: 100%; max-width: 430px;
-      border-top: 1px solid #2d3748;
-    }
-    .dialog-title { font-size: 15px; font-weight: 700; color: #e2e8f0; margin-bottom: 6px; }
-    .dialog-sub { font-size: 12px; color: #a3afc2; margin-bottom: 16px; line-height: 1.5; }
-    .dialog-textarea {
-      width: 100%; background: #0e1118; border: 1px solid #2d3748; border-radius: 12px;
-      color: #e2e8f0; font-size: 14px; font-family: inherit; padding: 14px;
-      resize: none; outline: none; line-height: 1.5; min-height: 100px;
-    }
-    .dialog-textarea:focus { border-color: #7c3aed; }
-    .dialog-actions { display: flex; gap: 10px; margin-top: 12px; }
-    .dialog-btn-cancel { flex: 1; padding: 14px; background: transparent; border: 1px solid #2d3748; border-radius: 12px; color: #a3afc2; font-size: 14px; font-weight: 600; }
-    .dialog-btn-ok { flex: 2; padding: 14px; background: #7c3aed; border-radius: 12px; color: #fff; font-size: 14px; font-weight: 700; }
+    .screen { padding: 22px 20px 24px; }
+    .d { font-family: Unbounded, Inter, sans-serif; }
+    .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); }
+    .h1 { font-family: Unbounded, Inter, sans-serif; font-size: 26px; font-weight: 800; line-height: 1.1; letter-spacing: -0.3px; }
+    .sec { margin: 24px 0 10px; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+    .muted { color: var(--muted); }
+    .card { background: var(--card); padding: 16px 18px; }
+    .card + .card { margin-top: 8px; }
+    .tap { cursor: pointer; }
 
-    .confirm-box {
-      background: #1e293b; border-radius: 20px 20px 0 0;
-      padding: 28px 20px 32px; width: 100%; max-width: 430px;
-      border-top: 1px solid #2d3748; text-align: center;
-    }
-    .confirm-icon { font-size: 32px; margin-bottom: 12px; }
-    .confirm-title { font-size: 16px; font-weight: 700; color: #e2e8f0; margin-bottom: 8px; }
-    .confirm-sub { font-size: 13px; color: #a3afc2; margin-bottom: 24px; line-height: 1.5; }
-    .confirm-actions { display: flex; gap: 10px; }
-    .confirm-btn-cancel { flex: 1; padding: 14px; background: transparent; border: 1px solid #2d3748; border-radius: 12px; color: #a3afc2; font-size: 14px; font-weight: 600; }
-    .confirm-btn-ok { flex: 1; padding: 14px; background: #ef4444; border-radius: 12px; color: #fff; font-size: 14px; font-weight: 700; }
+    .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 48px; padding: 0 12px; background: var(--card); border: 1px solid var(--line); color: var(--ink); font-size: 14px; font-weight: 600; text-align: center; line-height: 1.2; }
+    .btn-primary { background: var(--pink); border: 0; color: var(--ink); font-family: Unbounded, Inter, sans-serif; font-size: 15px; font-weight: 700; min-height: 52px; }
+    .btn-dark { background: var(--ink); border: 0; color: #FFFFFF; font-weight: 700; }
+    .btn-ghost { background: transparent; }
+    .btn-danger { background: transparent; color: var(--pink-text); border: 1px solid var(--line); }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 
-    .obj-input {
-      width: 100%; background: #0e1118; border: 1px solid #1a2035; border-radius: 10px;
-      color: #e2e8f0; font-size: 14px; padding: 12px; outline: none;
-    }
-    .obj-input:focus { border-color: #7c3aed; }
-    .obj-input::placeholder { color: #8b9ab3; }
-    .obj-label { font-size: 10px; color: #8b9ab3; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px; font-weight: 700; }
+    .hero { background: linear-gradient(140deg, #7B2CFF 0%, #3A4BFF 100%); color: #FFFFFF; padding: 22px; }
+    .hero .eyebrow { color: #FFFFFF; }
+    .pill { display: inline-block; background: rgba(11,10,18,0.28); color: #FFFFFF; padding: 8px 12px; font-size: 13px; font-weight: 600; }
+    .chip { display: inline-block; padding: 6px 10px; font-size: 12px; font-weight: 800; white-space: nowrap; }
+    .tag { display: inline-block; padding: 3px 8px; font-size: 12px; font-weight: 700; background: var(--bg); color: var(--ink); margin: 6px 6px 0 0; }
+
+    .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line2); }
+    .row:last-child { border-bottom: 0; }
+    .row .k { font-size: 14px; color: var(--muted); }
+    .row .v { font-size: 14px; font-weight: 700; text-align: right; }
+    .link { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; background: var(--card); padding: 15px 18px; font-size: 14px; font-weight: 600; text-align: left; min-height: 52px; }
+    .link + .link { margin-top: 6px; }
+    .link .s { color: var(--muted); font-weight: 500; }
+
+    .stat { background: var(--card); padding: 14px 16px; }
+    .stat .n { font-family: Unbounded, Inter, sans-serif; font-size: 20px; font-weight: 700; line-height: 1.15; word-break: break-word; }
+    .stat .l { font-size: 12px; color: var(--muted); margin-top: 5px; }
+
+    .seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--card); padding: 4px; margin-bottom: 22px; }
+    .seg button { min-height: 40px; font-size: 14px; font-weight: 600; color: var(--muted); }
+    .seg button.on { background: var(--ink); color: #FFFFFF; font-weight: 700; }
+
+    .backbar { display: flex; align-items: center; gap: 6px; margin: -6px 0 16px -6px; }
+    .backbar button { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; color: var(--ink); min-height: 44px; padding: 0 6px; }
+
+    .tabbar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 430px; background: #FFFFFF; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(4, 1fr); padding: 6px 0 calc(6px + env(safe-area-inset-bottom)); z-index: 50; }
+    .tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 52px; font-size: 11px; font-weight: 600; color: var(--muted); }
+    .tab.on { color: var(--pink-text); font-weight: 700; }
+
+    .bullet { display: flex; gap: 12px; align-items: flex-start; }
+    .bullet + .bullet { margin-top: 12px; }
+    .bullet .ic { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .bullet .t { font-size: 15px; line-height: 1.45; padding-top: 2px; }
+    .sq { width: 8px; height: 8px; flex-shrink: 0; margin-top: 7px; }
+
+    .dialog-overlay { position: fixed; inset: 0; background: rgba(20,18,28,0.55); display: flex; align-items: flex-end; justify-content: center; z-index: 100; padding: 0 0 env(safe-area-inset-bottom); animation: fadeUp 0.2s ease both; }
+    .dialog-box, .confirm-box { background: #FFFFFF; padding: 24px 20px 32px; width: 100%; max-width: 430px; }
+    .dialog-title, .confirm-title { font-family: Unbounded, Inter, sans-serif; font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+    .dialog-sub, .confirm-sub { font-size: 14px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+    .dialog-textarea { width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--ink); font-size: 15px; padding: 14px; resize: none; outline: none; line-height: 1.5; min-height: 110px; }
+    .dialog-textarea:focus, .obj-input:focus { border-color: var(--violet-dark); }
+    .dialog-actions, .confirm-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .dialog-actions .btn, .confirm-actions .btn { flex: 1; }
+
+    .obj-input { width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--ink); font-size: 16px; padding: 12px; outline: none; min-height: 48px; }
+    .obj-input::placeholder { color: #8A849B; }
+    .obj-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px; font-weight: 700; }
+    .pick { min-height: 48px; border: 2px solid var(--line); background: var(--card); font-size: 15px; font-weight: 700; color: var(--muted); }
+    .pick.on { border-color: var(--ink); background: var(--ink); color: #FFFFFF; }
   </style>
 </head>
 <body>
@@ -76,8 +111,11 @@
    v10 : accueil réorganisé (1 bouton principal + grille 2x2), bouton semaine supprimé,
          programme de la semaine suivante le dimanche ou quand la semaine est terminée.
    v11 : service worker (fin des soucis de cache) + notifications push.
+   v12 : nouvelle charte (claire, rose / violet / bleu électriques, angles droits, Unbounded + Inter),
+         navigation par onglets (Séance, Semaine, Analyses, Profil), écrans épurés,
+         fiche coureur réorganisée et synchronisée depuis le serveur.
    ============================================================ */
-const APP_VERSION = 11;
+const APP_VERSION = 12;
 (function migrate() {
   const v = parseInt(localStorage.getItem('mc_app_version') || '1', 10);
   if (v < 3) {
@@ -85,6 +123,8 @@ const APP_VERSION = 11;
      'mc_week_done_km','mc_volume_history','mc_goal','mc_objective']
       .forEach(function(k){ localStorage.removeItem(k); });
   }
+  // v12 : la fiche coureur change de format, l'ancienne copie locale est jetée
+  if (v < 12) localStorage.removeItem('mc_runner');
   if (v < APP_VERSION) localStorage.setItem('mc_app_version', String(APP_VERSION));
 })();
 
@@ -114,10 +154,10 @@ function objectiveDays(o) {
   return Math.max(0, Math.ceil((race - new Date()) / 86400000));
 }
 function getPhase(d) {
-  if (d > 63) return { label:"Fondamentaux", color:"#60a5fa", bg:"#0d1f3c" };
-  if (d > 35) return { label:"Construction", color:"#a78bfa", bg:"#1a0f35" };
-  if (d > 14) return { label:"Spécifique",   color:"#fbbf24", bg:"#2d1f00" };
-  return           { label:"Affûtage",       color:"#34d399", bg:"#032118" };
+  if (d > 63) return { label:"Fondamentaux" };
+  if (d > 35) return { label:"Construction" };
+  if (d > 14) return { label:"Spécifique" };
+  return           { label:"Affûtage" };
 }
 
 function timeLabel(min) {
@@ -134,15 +174,6 @@ function fmtDateFr(iso) {
 // L'objectif est-il "montagne" ? (présence de dénivelé)
 function isTrailObjective(o) { return !!(o && o.dplus > 0); }
 
-// Trois stats d'en-tête pour un objectif
-function objectiveStats(o) {
-  const dash = '-';
-  return [
-    { label:'Distance',   value: o.distanceKm ? (fmtKm(o.distanceKm) + ' km') : dash, color:'#a78bfa' },
-    { label:'D+',         value: o.dplus ? (o.dplus + ' m') : dash,                   color:'#34d399' },
-    { label:'Temps visé', value: timeLabel(o.targetTime) || dash,                     color:'#60a5fa' },
-  ];
-}
 
 const DAYS_FR = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
 const FULL_DAYS_FR = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
@@ -192,7 +223,7 @@ function saveWeekLogic(txt) {
 function loadWeekLogic() {
   return localStorage.getItem("mc_week_logic");
 }
-// Fiche coureur renvoyée par le serveur (source : bloc RUNNER de api/analyze.js)
+// Fiche coureur renvoyée par le serveur (source : api/_lib/runner.js)
 function saveRunner(r) {
   if (r) localStorage.setItem("mc_runner", JSON.stringify(r));
 }
@@ -289,7 +320,7 @@ async function syncFromServer() {
   if (!getAppKey()) return;
   try {
     const r = await fetch("/api/state", { headers: appHeaders() });
-    if (r.status === 401 || r.status === 503) { localStorage.setItem("mc_sync", "off"); if (state.view === 'home') render(); return; }
+    if (r.status === 401 || r.status === 503) { localStorage.setItem("mc_sync", "off"); if (isTabRoot(state.view)) render(); return; }
     if (!r.ok) throw new Error(String(r.status));
     const d = await r.json();
     let changed = false;
@@ -306,13 +337,18 @@ async function syncFromServer() {
       changed = true;
     }
     if (d.status) saveStatus(d.status);
+    if (d.runner) {
+      const before = localStorage.getItem("mc_runner");
+      saveRunner(d.runner);
+      if (before !== localStorage.getItem("mc_runner")) changed = true;
+    }
     const lb = loadBilan();
     if (d.bilan && d.bilan.body && (!lb || (d.bilan.savedAt || 0) > (lb.savedAt || 0))) {
       saveBilan(d.bilan.body.result, d.bilan.body.savedAt || d.bilan.savedAt);
       changed = true;
     }
     localStorage.setItem("mc_sync", d.stravaLinked ? "ok" : "off");
-    if (changed || state.view === 'home') render();
+    if (changed || isTabRoot(state.view)) render();
   } catch (e) {
     localStorage.setItem("mc_sync", "err");
   }
@@ -367,12 +403,12 @@ function extractKm(session) {
 function normalizeRun(s) {
   if (!s) return null;
   const sl = s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  if (/(sortie longue|long run|\bsl\b|rando course|rando-course)/.test(sl)) return { label:'Sortie longue', color:'#a78bfa' };
-  if (/(cote|denivele|grimpe|montee)/.test(sl)) return { label:'Côtes', color:'#34d399' };
-  if (/(fractionn|interval|vma|repet|fartlek|30\/30)/.test(sl)) return { label:'VMA', color:'#f87171' };
-  if (/(seuil|sv2)/.test(sl)) return { label:'Seuil', color:'#fbbf24' };
-  if (/(allure marathon|allure semi|allure 10|allure spe|\bam\b|tempo|resistance|allure trail)/.test(sl)) return { label:'Allure spé', color:'#fbbf24' };
-  if (/(footing|\bef\b|endurance|recup|regen|fond|sv1|lignes droites)/.test(sl)) return { label:'EF', color:'#60a5fa' };
+  if (/(sortie longue|long run|\bsl\b|rando course|rando-course)/.test(sl)) return { label:'Sortie longue', color:'#14121C' };
+  if (/(cote|denivele|grimpe|montee)/.test(sl)) return { label:'Côtes', color:'#FF2D87' };
+  if (/(fractionn|interval|vma|repet|fartlek|30\/30)/.test(sl)) return { label:'VMA', color:'#FF2D87' };
+  if (/(seuil|sv2)/.test(sl)) return { label:'Seuil', color:'#9B4DFF' };
+  if (/(allure marathon|allure semi|allure 10|allure spe|\bam\b|tempo|resistance|allure trail)/.test(sl)) return { label:'Allure spé', color:'#9B4DFF' };
+  if (/(footing|\bef\b|endurance|recup|regen|fond|sv1|lignes droites)/.test(sl)) return { label:'EF', color:'#2E6BFF' };
   return null;
 }
 
@@ -398,27 +434,27 @@ function showCommentDialog(onConfirm) {
 
   const title = document.createElement('div');
   title.className = 'dialog-title';
-  title.textContent = '💬 Ajouter un commentaire';
+  title.textContent = 'Un commentaire ?';
   const sub = document.createElement('div');
   sub.className = 'dialog-sub';
-  sub.textContent = 'Contraintes, fatigue particulière, contexte... Claude en tiendra compte dans l\'analyse.';
+  sub.textContent = 'Fatigue, douleur, contraintes : le coach en tiendra compte. Facultatif.';
 
   const textarea = document.createElement('textarea');
   textarea.className = 'dialog-textarea';
-  textarea.placeholder = 'Ex : J\'ai mal au mollet gauche depuis hier, grosse semaine de travail...';
+  textarea.placeholder = 'Ex : mollet gauche sensible depuis hier';
   textarea.value = localStorage.getItem('mc_pending_comment') || '';
 
   const actions = document.createElement('div');
   actions.className = 'dialog-actions';
 
   const btnCancel = document.createElement('button');
-  btnCancel.className = 'dialog-btn-cancel';
+  btnCancel.className = 'btn';
   btnCancel.textContent = 'Annuler';
   btnCancel.onclick = function() { clearOverlay(); };
 
   const btnOk = document.createElement('button');
-  btnOk.className = 'dialog-btn-ok';
-  btnOk.textContent = '→ Lancer l\'analyse';
+  btnOk.className = 'btn btn-primary';
+  btnOk.textContent = 'Lancer';
   btnOk.onclick = function() {
     const val = textarea.value.trim();
     localStorage.setItem('mc_pending_comment', val);
@@ -446,9 +482,6 @@ function showConfirm(opts) {
   const box = document.createElement('div');
   box.className = 'confirm-box';
 
-  const icon = document.createElement('div');
-  icon.className = 'confirm-icon';
-  icon.textContent = opts.icon || '⚠️';
   const title = document.createElement('div');
   title.className = 'confirm-title';
   title.textContent = opts.title;
@@ -460,18 +493,17 @@ function showConfirm(opts) {
   actions.className = 'confirm-actions';
 
   const btnCancel = document.createElement('button');
-  btnCancel.className = 'confirm-btn-cancel';
+  btnCancel.className = 'btn';
   btnCancel.textContent = 'Annuler';
   btnCancel.onclick = function() { clearOverlay(); };
 
   const btnOk = document.createElement('button');
-  btnOk.className = 'confirm-btn-ok';
+  btnOk.className = 'btn btn-dark';
   btnOk.textContent = opts.okLabel || 'Confirmer';
   btnOk.onclick = function() { clearOverlay(); opts.onConfirm(); };
 
   actions.appendChild(btnCancel);
   actions.appendChild(btnOk);
-  box.appendChild(icon);
   box.appendChild(title);
   box.appendChild(sub);
   box.appendChild(actions);
@@ -481,7 +513,6 @@ function showConfirm(opts) {
 
 function showDisconnectConfirm() {
   showConfirm({
-    icon: '🔌',
     title: 'Déconnecter Strava ?',
     sub: 'Ton historique d\'analyse sera effacé. Ton objectif et tes préférences sont conservés.',
     okLabel: 'Déconnecter',
@@ -489,6 +520,7 @@ function showDisconnectConfirm() {
       ['mc_auth','mc_app_key','mc_sync','mc_last_session','mc_status','mc_last_result','mc_weekly_plan','mc_week_logic','mc_week_start','mc_confidence','mc_pending_comment',
        'mc_last_bilan','mc_last_activities','mc_volume_history','mc_week_done_km']
         .forEach(function(k) { localStorage.removeItem(k); });
+      localStorage.removeItem('mc_runner');
       setState({ auth: null, result: null, savedAt: null, view: 'login' });
     }
   });
@@ -513,9 +545,17 @@ let state = {
   auth: JSON.parse(localStorage.getItem("mc_auth") || "null"),
   lastAction: null,
   weekDetail: null, // jour ouvert dans le détail de la semaine (ex. "Jeu")
+  anaTab: 'last',   // onglet Analyses : 'last' (dernière séance) ou 'bilan'
+  more: false,      // détails repliés (séance, analyse, fiche)
 };
 
-function setState(patch) { state = { ...state, ...patch }; render(); }
+function setState(patch) {
+  // Changement d'écran : on replie les détails
+  if (patch.view && patch.view !== state.view && !('more' in patch)) patch.more = false;
+  if (patch.view && patch.view !== 'prefs' && !('prefsDraft' in patch)) { patch.prefsDraft = null; patch.prefsSaved = false; }
+  state = { ...state, ...patch };
+  render();
+}
 
 // Auth helpers
 function saveAuth(auth) { localStorage.setItem("mc_auth", JSON.stringify(auth)); state.auth = auth; }
@@ -576,7 +616,7 @@ async function analyze(mode, extra, comment) {
     localStorage.removeItem('mc_pending_comment');
 
     if (data.result._mode === 'bilan') {
-      setState({ loading:false, view:"bilan" });
+      setState({ loading:false, view:"analyses", anaTab:"bilan" });
     } else {
       setState({ loading:false, result:data.result, savedAt:data.savedAt || Date.now(), view:"result" });
     }
@@ -594,679 +634,77 @@ async function analyzeLastNow() {
     if (data.result) applyAnalysisData(data.result);
     if (data.last) saveLast(data.last);
     if (data.result) { state.result = data.result.result; state.savedAt = data.result.savedAt; }
-    if (data.last) setState({ loading:false, view:"last" });
+    if (data.last) setState({ loading:false, view:"analyses", anaTab:"last" });
     else setState({ loading:false, error:(data.error || "La dernière activité n'est pas une course : programme mis à jour, pas d'analyse détaillée."), view:"error" });
   } catch(e) { setState({ loading:false, error:e.message, view:"error" }); }
 }
 
-// UI helpers
+
+/* ============================================================
+   UI v12 : helpers
+   ============================================================ */
 const css = s => Object.entries(s).map(([k,v])=>k.replace(/([A-Z])/g,'-$1').toLowerCase()+':'+v).join(';');
 function h(tag, attrs) {
   const children = Array.prototype.slice.call(arguments, 2);
   const el = document.createElement(tag);
   if (attrs) Object.entries(attrs).forEach(function(e) {
     const k = e[0], v = e[1];
+    if (v === null || v === undefined || v === false) return;
     if (k==='style' && typeof v==='object') el.style.cssText = css(v);
     else if (k.startsWith('on')) el.addEventListener(k.slice(2).toLowerCase(), v);
     else el.setAttribute(k, v);
   });
-  children.flat().forEach(function(c) { if (c) el.appendChild(typeof c==='string' ? document.createTextNode(c) : c); });
+  children.flat(Infinity).forEach(function(c) {
+    if (c === null || c === undefined || c === false || c === '') return;
+    el.appendChild(typeof c === 'string' || typeof c === 'number' ? document.createTextNode(String(c)) : c);
+  });
   return el;
 }
+const has = function(v) { return v !== null && v !== undefined && String(v).trim() !== '' && String(v).trim() !== '-'; };
 
-// Donut SVG (fait vs planifié)
-function donutEl(done, planned) {
-  const pct = planned > 0 ? Math.min(100, done / planned * 100) : 0;
-  const r = 18, c = (2 * Math.PI * r).toFixed(1);
-  const off = (c * (1 - pct / 100)).toFixed(1);
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'width:48px;height:48px;flex-shrink:0;';
-  wrap.innerHTML = '<svg width="48" height="48" viewBox="0 0 48 48">' +
-    '<circle cx="24" cy="24" r="18" fill="none" stroke="#1a2035" stroke-width="5"/>' +
-    '<circle cx="24" cy="24" r="18" fill="none" stroke="#7c3aed" stroke-width="5" stroke-linecap="round" stroke-dasharray="' + c + '" stroke-dashoffset="' + off + '" transform="rotate(-90 24 24)"/>' +
-    '<text x="24" y="28" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="800">' + Math.round(pct) + '%</text>' +
-    '</svg>';
-  return wrap;
+// Icônes au trait (pas d'emoji)
+const ICONS = {
+  bolt: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>',
+  cal: '<rect x="3" y="4" width="18" height="18"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line>',
+  chart: '<polyline points="3 17 9 11 13 15 21 7"></polyline><polyline points="15 7 21 7 21 13"></polyline>',
+  user: '<circle cx="12" cy="8" r="4"></circle><path d="M4 21c0-4 4-6 8-6s8 2 8 6"></path>',
+  check: '<polyline points="20 6 9 17 4 12"></polyline>',
+  alert: '<line x1="12" y1="5" x2="12" y2="13"></line><line x1="12" y1="18" x2="12" y2="18.5"></line>',
+  chev: '<polyline points="9 6 15 12 9 18"></polyline>',
+  back: '<polyline points="15 6 9 12 15 18"></polyline>',
+  down: '<polyline points="6 9 12 15 18 9"></polyline>',
+  up: '<polyline points="6 15 12 9 18 15"></polyline>',
+};
+function icon(name, size, color, stroke) {
+  const s = document.createElement('span');
+  s.style.cssText = 'display:inline-flex;flex-shrink:0;';
+  s.setAttribute('aria-hidden', 'true');
+  s.innerHTML = '<svg width="' + (size || 20) + '" height="' + (size || 20) + '" viewBox="0 0 24 24" fill="none" stroke="' + (color || 'currentColor') + '" stroke-width="' + (stroke || 2) + '" stroke-linecap="square" stroke-linejoin="miter">' + (ICONS[name] || '') + '</svg>';
+  return s;
 }
 
-function confidenceColor(v) {
-  if (v >= 75) return '#34d399';
-  if (v >= 50) return '#fbbf24';
-  return '#f87171';
-}
-
-/* ---------------- Semaine couverte par le programme ---------------- */
-// "current" | "next" | "past" | null
-function planWeekKind() {
-  const ws = loadWeekStart();
-  if (!ws) return null;
-  const cur = getMondayStr();
-  if (ws === cur) return 'current';
-  return ws > cur ? 'next' : 'past';
-}
-function planWeekTitle(base) {
-  const k = planWeekKind();
-  if (k === 'next') return 'Semaine prochaine';
-  if (k === 'past') return 'Semaine passée';
-  return base;
-}
-
-/* ---------------- Détail d'une séance de la semaine ---------------- */
 const DAY_FULL = { Lun:'Lundi', Mar:'Mardi', Mer:'Mercredi', Jeu:'Jeudi', Ven:'Vendredi', Sam:'Samedi', Dim:'Dimanche' };
+const TAB_ROOTS = ['home', 'week', 'analyses', 'profil'];
+function isTabRoot(v) { return TAB_ROOTS.indexOf(v) >= 0; }
+// Onglet actif pour chaque écran
+const VIEW_TAB = { home:'home', result:'home', cross:'home', week:'week', analyses:'analyses', profil:'profil', objective:'profil', prefs:'profil', status:'profil', error:'home' };
 
-function toggleWeekDetail(day) {
-  setState({ weekDetail: state.weekDetail === day ? null : day });
+function backBar(label, to, patch) {
+  return h('div', {class:'backbar'},
+    h('button', {onclick:function(){ setState(Object.assign({ view: to }, patch || {})); }}, icon('back', 20, null, 2.5), label));
 }
 
-function weekDetailPanel(week) {
-  if (!state.weekDetail || !week) return null;
-  const w = week.find(function(x) { return x.day === state.weekDetail; });
-  if (!w) return null;
-  const run = normalizeRun(w.session);
-  const color = run ? run.color : (w.color || '#a78bfa');
-  const detail = w.detail && String(w.detail).trim();
-  return h('div', {style:{marginTop:'10px',background:color+'12',border:'1px solid '+color+'35',borderRadius:'10px',padding:'12px 14px'}},
-    h('div', {style:{fontSize:'12px',fontWeight:'800',color:color,marginBottom:'5px'}},
-      (DAY_FULL[w.day] || w.day) + ' · ' + w.session + (w.done ? ' · fait ✓' : '')),
-    h('div', {style:{fontSize:'12px',color:detail ? '#e2e8f0' : '#8b9ab3',lineHeight:'1.5'}},
-      detail || 'Détail indisponible : relance « Ma prochaine séance » pour l\'obtenir.'));
+function verdictStyle(v) {
+  return {
+    reussie:   { bg:'#2E6BFF', fg:'#FFFFFF' },
+    partielle: { bg:'#7B2CFF', fg:'#FFFFFF' },
+    ratee:     { bg:'#FF2D87', fg:'#14121C' },
+    libre:     { bg:'#14121C', fg:'#FFFFFF' },
+  }[v] || { bg:'#14121C', fg:'#FFFFFF' };
 }
-
-/* ---------------- Header ---------------- */
-function renderHeader() {
-  const o = loadObjective();
-  return o ? renderHeaderObjective(o) : renderHeaderFree();
-}
-
-// Carte "prochaine séance" (commune aux deux modes)
-function nextSessionCard() {
-  const resultData = state.result || (loadCache() ? loadCache().result : null);
-  if (!resultData) return null;
-  return h('div', {
-    onclick: function() {
-      const r = state.result || (loadCache() ? loadCache().result : null);
-      setState({ result: r, view:'result' });
-    },
-    style:{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#0e1118',borderRadius:'10px',padding:'10px 14px',border:'1px solid #1a2035',cursor:'pointer',marginBottom:'6px'}},
-    h('div', null,
-      h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, resultData.nextDay ? 'Prochaine seance · ' + resultData.nextDay : 'Prochaine seance'),
-      h('div', {style:{fontSize:'13px',fontWeight:'700',color:'#a78bfa'}}, resultData.type + ' · ' + resultData.headline)),
-    h('span', {style:{color:'#7a889f',fontSize:'16px'}}, '>'));
-}
-
-// Carte "dernier bilan" (commune aux deux modes)
-function bilanCard() {
-  const b = loadBilan();
-  if (!b) return null;
-  const d = b.result;
-  const verdictColor = { continuer:'#34d399', ameliorer:'#60a5fa', downgrade:'#f87171' };
-  const color = verdictColor[d.verdict] || '#a78bfa';
-  return h('div', {
-    onclick: function() { setState({ view:'bilan' }); },
-    style:{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#0a0d14',borderRadius:'10px',padding:'9px 14px',border:'1px solid #151c2a',cursor:'pointer'}},
-    h('div', null,
-      h('div', {style:{fontSize:'8px',color:'#7a889f',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, 'Bilan · il y a ' + formatAge(b.savedAt)),
-      h('div', {style:{fontSize:'12px',fontWeight:'600',color:color}}, (d.niveau||'') + (d.tendance ? ' · ' + d.tendance : ''))),
-    h('span', {style:{color:'#7a889f',fontSize:'16px'}}, '>'));
-}
-
-// Mode ENTRAÎNEMENT LIBRE : ni compte à rebours, ni phase, ni indice de confiance
-function renderHeaderFree() {
-  return h('div', {style:{padding:'20px 18px 16px',borderBottom:'1px solid #111827',position:'relative'}},
-    h('button', {
-      onclick: function() { setState({ view: 'prefs' }); },
-      style:{position:'absolute',top:'16px',right:'18px',background:'none',border:'none',color:'#8b9ab3',fontSize:'18px',cursor:'pointer',zIndex:'10',padding:'4px',lineHeight:'1'}
-    }, '⚙️'),
-    h('div', {style:{marginBottom:'14px',paddingRight:'32px'}},
-      h('div', {style:{fontSize:'11px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'2.5px',fontWeight:'700',marginBottom:'6px'}}, '🏃 Entraînement libre'),
-      h('div', {style:{fontSize:'24px',fontWeight:'900',color:'#fff',letterSpacing:'-0.8px',lineHeight:'1.15',marginBottom:'5px'}}, 'Progression continue'),
-      h('div', {style:{fontSize:'12px',color:'#a3afc2',lineHeight:'1.5'}}, 'Pas de course visée : on entretient la forme et on construit la base.')),
-    h('button', {
-      onclick: function() { setState({ view:'objective' }); },
-      style:{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:'8px',background:'#1a0f35',border:'1px solid #7c3aed55',borderRadius:'12px',padding:'13px',color:'#a78bfa',fontSize:'13px',fontWeight:'700',marginBottom:(state.result||loadBilan())?'10px':'0'}
-    }, '🎯 Définir un objectif'),
-    nextSessionCard(),
-    bilanCard()
-  );
-}
-
-// Mode OBJECTIF : compte à rebours, phase, stats, indice de confiance
-function renderHeaderObjective(o) {
-  const days = objectiveDays(o);
-  const phase = days != null ? getPhase(days) : null;
-  const stats = objectiveStats(o);
-  const confidence = loadConfidence();
-  const next = state.result || (loadCache() ? loadCache().result : null);
-  const openObjective = function() { setState({ view:'objective' }); };
-
-  const heroLeft = h('div', { onclick: openObjective, style:{cursor:'pointer'} },
-    h('div', {style:{fontSize:'11px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'2.5px',fontWeight:'700',marginBottom:'4px'}},
-      '🎯 ' + (o.name || 'Mon objectif') + '  ✎'),
-    days != null
-      ? h('div', {style:{display:'flex',alignItems:'baseline',gap:'8px'}},
-          h('span', {style:{fontSize:'40px',fontWeight:'900',color:'#fff',letterSpacing:'-2px',lineHeight:'1'}}, String(days)),
-          h('span', {style:{fontSize:'13px',color:'#a3afc2',fontWeight:'600'}}, 'jours'))
-      : h('div', {style:{fontSize:'20px',fontWeight:'900',color:'#fff',letterSpacing:'-0.5px',lineHeight:'1.2'}}, 'Date à définir'));
-
-  const badge = phase ? h('div', {style:{display:'flex',alignItems:'center',gap:'7px',background:phase.bg,borderRadius:'20px',padding:'6px 14px',border:'1px solid '+phase.color+'30'}},
-    h('div', {style:{width:'6px',height:'6px',borderRadius:'50%',background:phase.color,boxShadow:'0 0 6px '+phase.color}}),
-    h('span', {style:{fontSize:'11px',color:phase.color,fontWeight:'700'}}, phase.label)) : null;
-
-  const statCells = stats.map(function(s) {
-    return h('div', {style:{background:'#0e1118',borderRadius:'10px',padding:'9px 8px',borderBottom:'2px solid '+s.color+'25',textAlign:'center'}},
-      h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',fontWeight:'700'}}, s.label),
-      h('div', {style:{fontSize:'12px',fontWeight:'800',color:s.color,lineHeight:'1'}}, s.value));
-  });
-
-  return h('div', {style:{padding:'20px 18px 16px',borderBottom:'1px solid #111827',position:'relative'}},
-    h('button', {
-      onclick: function() { setState({ view: 'prefs' }); },
-      style:{position:'absolute',top:'16px',right:'18px',background:'none',border:'none',color:'#8b9ab3',fontSize:'18px',cursor:'pointer',zIndex:'10',padding:'4px',lineHeight:'1'}
-    }, '⚙️'),
-    h('div', {style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'14px',paddingRight:'28px'}}, heroLeft, badge),
-    h('div', {onclick:openObjective,style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'7px',marginBottom:'10px',cursor:'pointer'}}, statCells),
-    confidence !== null ? h('div', {style:{display:'flex',alignItems:'center',gap:'10px',background:'#0e1118',borderRadius:'10px',padding:'9px 14px',marginBottom: next ? '10px' : '0',border:'1px solid #1a2035'}},
-      h('div', {style:{flex:'1'}},
-        h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, 'Indice de confiance'),
-        h('div', {style:{height:'4px',background:'#1a2035',borderRadius:'2px',overflow:'hidden'}},
-          h('div', {style:{height:'100%',width:confidence+'%',background:confidenceColor(confidence),borderRadius:'2px',transition:'width 0.6s ease'}}))),
-      h('div', {style:{fontSize:'18px',fontWeight:'900',color:confidenceColor(confidence),lineHeight:'1',minWidth:'36px',textAlign:'right'}}, confidence + '/100')) : null,
-    nextSessionCard(),
-    bilanCard()
-  );
-}
-
-/* ---------------- Home ---------------- */
-function renderHome() {
-  const name = (state.auth && state.auth.athlete_name) ? state.auth.athlete_name : 'Yann';
-  const cache = loadCache();
-  const week = loadWeeklyPlan();
-  const o = loadObjective();
-
-  const children = [
-    h('div', {style:{fontSize:'14px',fontWeight:'700',color:'#e2e8f0',marginBottom:'3px'}}, 'Bonjour ' + name + ' 👋'),
-    !cache ? h('div', {style:{fontSize:'12px',color:'#a3afc2',marginBottom:'16px'}}, 'Lance une analyse pour obtenir ta premiere seance.') : null
-  ];
-
-  const lastS = loadLast();
-  if (lastS && lastS.body && lastS.body.analysis) {
-    const a = lastS.body.analysis;
-    const vc = verdictColor(a.verdict);
-    children.push(h('div', {
-      onclick: function() { setState({ view:'last' }); },
-      style:{display:'flex',alignItems:'center',justifyContent:'space-between',background:'#0e1118',borderRadius:'12px',padding:'12px 14px',border:'1px solid '+vc+'40',cursor:'pointer',marginTop:'10px'}},
-      h('div', null,
-        h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'3px',fontWeight:'700'}}, 'Derniere seance · ' + fmtShortDate(lastS.body.date)),
-        h('div', {style:{fontSize:'13px',fontWeight:'700',color:'#e2e8f0'}}, (a.title || 'Séance') + ' · ', h('span', {style:{color:vc}}, a.verdictLabel || ''))),
-      h('span', {style:{color:'#7a889f',fontSize:'16px'}}, '>')));
-  }
-
-  const noRunDays = daysSinceLastRun();
-  if (noRunDays !== null && noRunDays >= 4) {
-    children.push(h('div', {style:{display:'flex',alignItems:'center',gap:'10px',background:'#1a0505',border:'1px solid #f8717130',borderRadius:'12px',padding:'12px 14px',marginTop:'10px',marginBottom:'12px'}},
-      h('span', {style:{fontSize:'18px'}}, '⚠️'),
-      h('div', null,
-        h('div', {style:{fontSize:'13px',fontWeight:'700',color:'#f87171'}}, noRunDays + ' jours sans course'),
-        h('div', {style:{fontSize:'11px',color:'#a3afc2'}}, 'Pense a relancer en douceur.'))));
-  } else {
-    children.push(h('div', {style:{marginBottom:'12px'}}));
-  }
-
-  // Action principale
-  children.push(h('button', {
-    onclick: function() { analyzeWithComment('session'); },
-    style:{width:'100%',display:'flex',alignItems:'center',gap:'14px',background:'#1a0f35',border:'2px solid #7c3aed',borderRadius:'14px',padding:'15px 16px',marginBottom:'9px',color:'#e2e8f0',textAlign:'left'}},
-    h('span', {style:{width:'42px',height:'42px',borderRadius:'12px',background:'#7c3aed33',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'20px',flexShrink:'0'}}, '⚡'),
-    h('div', {style:{flex:'1'}},
-      h('div', {style:{fontSize:'15px',fontWeight:'700',marginBottom:'2px'}}, 'Ma prochaine séance'),
-      h('div', {style:{fontSize:'12px',color:'#c4b5fd'}}, 'Séance détaillée et programme de la semaine')),
-    h('span', {style:{color:'#a78bfa',fontSize:'18px'}}, '>')));
-
-  // Actions secondaires : grille 2x2
-  const secondary = [
-    { icon:'🔬', label:'Analyser la séance', run:function(){ analyzeLastNow(); } },
-    { icon:'🔋', label:'Je suis fatigué',   run:function(){ analyzeWithComment('fatigue'); } },
-    { icon:'🚴', label:'Autre sport',       run:function(){ setState({ view:'cross' }); } },
-    { icon:'🔍', label:'Bilan',             run:function(){ analyzeWithComment('bilan'); } },
-  ];
-  children.push(h.apply(null, ['div', {style:{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:'8px',marginBottom:'6px'}}].concat(
-    secondary.map(function(a) {
-      return h('button', {
-        onclick: a.run,
-        style:{display:'flex',alignItems:'center',gap:'10px',background:'#0e1118',border:'1px solid #1a2035',borderRadius:'12px',padding:'13px 12px',color:'#e2e8f0',textAlign:'left',minHeight:'50px'}},
-        h('span', {style:{fontSize:'18px',flexShrink:'0'}}, a.icon),
-        h('span', {style:{fontSize:'13px',fontWeight:'600',lineHeight:'1.25'}}, a.label));
-    }))));
-  children.push(h('div', {style:{fontSize:'10px',color:'#7a889f',textAlign:'center',marginBottom:'14px'}}, 'Ces actions appellent Claude et utilisent des tokens'));
-
-  // Bloc Ma semaine
-  if (week) {
-    const runs = week.filter(function(w) { return normalizeRun(w.session); });
-    if (runs.length) {
-      const doneKm = loadWeekDone();
-      const logic = loadWeekLogic();
-      const plannedKm = runs.reduce(function(s, w) {
-        const km = parseFloat((extractKm(w.session) || '0').replace(',', '.'));
-        return s + (isNaN(km) ? 0 : km);
-      }, 0);
-
-      const cards = runs.map(function(w) {
-        const run = normalizeRun(w.session);
-        const km = w.distance || extractKm(w.session) || '';
-        const selected = state.weekDetail === w.day;
-        return h('div', {onclick: function() { toggleWeekDetail(w.day); }, style:{textAlign:'center',flexShrink:'0',minWidth:'64px',cursor:'pointer',opacity: w.done && !selected ? '0.5' : '1'}},
-          h('div', {style:{fontSize:'8px',color:'#8b9ab3',marginBottom:'4px',textTransform:'uppercase',fontWeight:'600'}}, w.day + (w.done ? ' ✓' : '')),
-          h('div', {style:{borderRadius:'10px',padding:'8px 6px',background:run.color+(selected?'30':'15'),border:(selected?'2px solid '+run.color:'1px solid '+run.color+'30'),display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'3px',minHeight:'66px'}},
-            h('div', {style:{fontSize:'8px',color:run.color,fontWeight:'800',lineHeight:'1.2',textAlign:'center'}}, run.label),
-            km ? h('div', {style:{fontSize:'12px',color:'#e2e8f0',fontWeight:'900',lineHeight:'1',marginTop:'2px'}}, km) : null));
-      });
-
-      children.push(
-        h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px'}},
-          h('div', {style:{fontSize:'11px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'2px',marginBottom: logic ? '6px' : '12px',fontWeight:'700'}}, planWeekTitle('Ma semaine')),
-          planWeekKind() === 'past' ? h('div', {style:{fontSize:'11px',color:'#fbbf24',marginBottom:'10px'}}, 'Programme périmé : lance « Ma prochaine séance » pour le mettre à jour.') : null,
-          logic ? h('div', {style:{fontSize:'12px',color:'#c4b5fd',lineHeight:'1.5',marginBottom:'12px'}}, logic) : null,
-          (doneKm !== null && plannedKm > 0) ? h('div', {style:{display:'flex',alignItems:'center',gap:'12px',marginBottom:'12px'}},
-            donutEl(doneKm, plannedKm),
-            h('div', null,
-              h('div', {style:{fontSize:'16px',fontWeight:'900',color:'#e2e8f0',lineHeight:'1'}}, doneKm + ' / ' + Math.round(plannedKm) + ' km'),
-              h('div', {style:{fontSize:'10px',color:'#a3afc2',marginTop:'4px'}}, 'Volume course · fait vs planifie'))) : null,
-          h.apply(null, ['div', {style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'2px'}}].concat(cards)),
-          weekDetailPanel(week),
-          !state.weekDetail ? h('div', {style:{fontSize:'10px',color:'#7a889f',marginTop:'8px'}}, 'Touche une séance pour voir son contenu.') : null));
-    }
-  }
-
-  // Fiche coureur (sans appel API)
-  children.push(h('button', {
-    onclick: function() { setState({ view:'runner' }); },
-    style:{width:'100%',display:'flex',alignItems:'center',gap:'10px',background:'#0e1118',border:'1px solid #1a2035',borderRadius:'12px',padding:'11px 14px',marginBottom:'9px',color:'#e2e8f0',textAlign:'left'}},
-    h('span', {style:{fontSize:'16px',flexShrink:'0'}}, '📋'),
-    h('span', {style:{flex:'1',fontSize:'13px',fontWeight:'600'}}, 'Ma fiche coureur'),
-    h('span', {style:{fontSize:'11px',color:'#8b9ab3'}}, 'VMA, allures, zones'),
-    h('span', {style:{color:'#7a889f',fontSize:'16px',marginLeft:'6px'}}, '>')));
-
-  // Graphe km cumules par semaine : course a pied uniquement (route, trail, tapis)
-  const vol = loadVolume();
-  if (vol && vol.length) {
-    const metric = function(v) { return v.km || 0; };
-    const maxV = Math.max.apply(null, vol.map(metric).concat([1]));
-    const curr = vol[vol.length - 1];
-    const bars = vol.map(function(v, i) {
-      const isCurrent = i === vol.length - 1;
-      const val = metric(v);
-      const barPx = val > 0 ? Math.max(4, Math.round(val / maxV * 64)) : 0;
-      return h('div', {style:{flex:'1',display:'flex',flexDirection:'column',justifyContent:'flex-end',alignItems:'center',height:'84px'}},
-        val > 0 ? h('div', {style:{fontSize:'9px',color:isCurrent?'#c4b5fd':'#a3afc2',fontWeight:'700',marginBottom:'3px',lineHeight:'1'}}, String(Math.round(val))) : null,
-        h('div', {style:{width:'100%',height:barPx+'px',background:isCurrent?'#7c3aed':'#3a4566',borderRadius:'3px 3px 0 0',minHeight:val>0?'3px':'2px',opacity:val>0?'1':'0.4'}}));
-    });
-    children.push(
-      h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'14px 16px',marginBottom:'9px'}},
-        h('div', {style:{fontSize:'11px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontWeight:'700'}}, 'Km cumulés par semaine · course à pied · 12 sem'),
-        h.apply(null, ['div', {style:{display:'flex',gap:'4px',alignItems:'flex-end'}}].concat(bars)),
-        h('div', {style:{display:'flex',justifyContent:'space-between',marginTop:'8px'}},
-          h('span', {style:{fontSize:'9px',color:'#8b9ab3'}}, 'S-11'),
-          h('span', {style:{fontSize:'9px',color:'#a78bfa',fontWeight:'700'}}, 'Cette semaine · ' + curr.km + ' km'))));
-  }
-
-  children.push(h('button', {
-    onclick: function() { showDisconnectConfirm(); },
-    style:{width:'100%',padding:'12px',background:'transparent',border:'1px dashed #334155',borderRadius:'12px',color:'#8b9ab3',fontSize:'12px',marginTop:'4px'}
-  }, 'Deconnecter Strava'));
-
-  const sync = syncStatus();
-  const syncTxt = sync === null ? ' · serveur non relié : déconnecte puis reconnecte Strava'
-    : sync === 'ok' ? ' · serveur ✓'
-    : sync === 'off' ? ' · serveur indisponible : reconnecte Strava'
-    : sync === 'err' ? ' · serveur injoignable'
-    : ' · serveur…';
-  children.push(h('div', {onclick: function() { openStatus(); }, style:{textAlign:'center',fontSize:'9px',color: sync === 'ok' ? '#7a889f' : '#a3afc2',marginTop:'10px',lineHeight:'1.5',cursor:'pointer'}}, 'Coach · v' + APP_VERSION + syncTxt + ' · état ›'));
-
-  return h.apply(null, ['div', {class:'fade',style:{padding:'20px 18px'}}].concat(children));
-}
-
-/* ---------------- Écran Objectif (ajout / modification / suppression) ---------------- */
-function renderObjective() {
-  const existing = loadObjective();
-  const draft = {
-    name: existing ? (existing.name || '') : '',
-    date: existing ? (existing.date || null) : null,
-    distanceKm: existing ? (existing.distanceKm || null) : null,
-    dplus: existing ? (existing.dplus || null) : null,
-    targetTime: existing ? (existing.targetTime || null) : null,
-  };
-
-  function labeled(labelText, inputEl) {
-    const wrap = document.createElement('div');
-    const lab = document.createElement('div');
-    lab.className = 'obj-label';
-    lab.textContent = labelText;
-    wrap.appendChild(lab);
-    wrap.appendChild(inputEl);
-    return wrap;
-  }
-
-  const wrapper = document.createElement('div');
-  wrapper.className = 'fade';
-  wrapper.style.cssText = 'padding:20px 18px;';
-
-  // Nav
-  const nav = document.createElement('div');
-  nav.style.cssText = 'display:flex;align-items:center;gap:12px;margin-bottom:8px;';
-  const backBtn = document.createElement('button');
-  backBtn.textContent = '←';
-  backBtn.style.cssText = 'background:none;border:none;color:#7c3aed;font-size:22px;cursor:pointer;padding:0;line-height:1;';
-  backBtn.onclick = function() { setState({ view: 'home' }); };
-  const title = document.createElement('div');
-  title.style.cssText = 'font-size:16px;font-weight:800;color:#e2e8f0;';
-  title.textContent = existing ? '🎯 Modifier l\'objectif' : '🎯 Ajouter un objectif';
-  nav.appendChild(backBtn);
-  nav.appendChild(title);
-  wrapper.appendChild(nav);
-
-  const intro = document.createElement('div');
-  intro.style.cssText = 'font-size:11px;color:#a3afc2;line-height:1.5;margin-bottom:18px;padding-left:34px;';
-  intro.textContent = existing
-    ? 'Compte à rebours, phases et indice de confiance sont calculés à partir de ces informations.'
-    : 'Dès qu\'un objectif est fixé, le compte à rebours, les phases et l\'indice de confiance s\'activent.';
-  wrapper.appendChild(intro);
-
-  // Bloc formulaire
-  const block = document.createElement('div');
-  block.style.cssText = 'background:#0e1118;border:1px solid #1a2035;border-radius:14px;padding:16px;margin-bottom:16px;';
-
-  // Nom
-  const nameIn = document.createElement('input');
-  nameIn.className = 'obj-input';
-  nameIn.type = 'text';
-  nameIn.placeholder = 'Ex : Trail des Cimes';
-  nameIn.value = draft.name;
-  nameIn.oninput = function() { draft.name = nameIn.value; };
-  block.appendChild(labeled('Nom de la course', nameIn));
-
-  // Date
-  const dateWrap = document.createElement('div');
-  dateWrap.style.cssText = 'margin-top:14px;';
-  const dateIn = document.createElement('input');
-  dateIn.className = 'obj-input';
-  dateIn.type = 'date';
-  dateIn.value = draft.date || '';
-  dateIn.oninput = function() { draft.date = dateIn.value || null; };
-  dateWrap.appendChild(labeled('Date', dateIn));
-  block.appendChild(dateWrap);
-
-  // Distance + D+
-  const gridDD = document.createElement('div');
-  gridDD.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;';
-  const distIn = document.createElement('input');
-  distIn.className = 'obj-input';
-  distIn.type = 'number'; distIn.inputMode = 'decimal'; distIn.min = '0'; distIn.step = '1';
-  distIn.placeholder = '35';
-  distIn.value = (draft.distanceKm != null ? draft.distanceKm : '');
-  distIn.oninput = function() { const v = parseFloat(distIn.value); draft.distanceKm = (v > 0 ? v : null); };
-  const dplusIn = document.createElement('input');
-  dplusIn.className = 'obj-input';
-  dplusIn.type = 'number'; dplusIn.inputMode = 'numeric'; dplusIn.min = '0'; dplusIn.step = '50';
-  dplusIn.placeholder = '1500';
-  dplusIn.value = (draft.dplus != null ? draft.dplus : '');
-  dplusIn.oninput = function() { const v = parseInt(dplusIn.value, 10); draft.dplus = (v > 0 ? v : null); };
-  gridDD.appendChild(labeled('Distance (km)', distIn));
-  gridDD.appendChild(labeled('Dénivelé D+ (m)', dplusIn));
-  block.appendChild(gridDD);
-
-  // Temps visé
-  const timeWrap = document.createElement('div');
-  timeWrap.style.cssText = 'margin-top:14px;';
-  const timeLab = document.createElement('div');
-  timeLab.className = 'obj-label';
-  timeLab.textContent = 'Temps visé';
-  timeWrap.appendChild(timeLab);
-  const timeRow = document.createElement('div');
-  timeRow.style.cssText = 'display:flex;gap:8px;align-items:center;';
-  const cur = draft.targetTime || 0;
-  const hIn = document.createElement('input');
-  hIn.className = 'obj-input'; hIn.type = 'number'; hIn.inputMode = 'numeric'; hIn.min = '0'; hIn.max = '23';
-  hIn.placeholder = 'h'; hIn.style.textAlign = 'center';
-  hIn.value = cur ? String(Math.floor(cur/60)) : '';
-  const mIn = document.createElement('input');
-  mIn.className = 'obj-input'; mIn.type = 'number'; mIn.inputMode = 'numeric'; mIn.min = '0'; mIn.max = '59';
-  mIn.placeholder = 'min'; mIn.style.textAlign = 'center';
-  mIn.value = cur ? String(cur%60) : '';
-  function syncTime() {
-    const hh = parseInt(hIn.value, 10) || 0;
-    const mm = parseInt(mIn.value, 10) || 0;
-    const total = hh*60 + mm;
-    draft.targetTime = total > 0 ? total : null;
-  }
-  hIn.oninput = syncTime; mIn.oninput = syncTime;
-  const hLab = document.createElement('span'); hLab.textContent = 'h'; hLab.style.cssText='color:#a3afc2;font-size:13px;';
-  const mLab = document.createElement('span'); mLab.textContent = 'min'; mLab.style.cssText='color:#a3afc2;font-size:13px;';
-  timeRow.appendChild(hIn); timeRow.appendChild(hLab);
-  timeRow.appendChild(mIn); timeRow.appendChild(mLab);
-  timeWrap.appendChild(timeRow);
-  const timeHint = document.createElement('div');
-  timeHint.style.cssText = 'font-size:10px;color:#8b9ab3;margin-top:6px;';
-  timeHint.textContent = 'Simple repère, aucune allure n\'est imposée.';
-  timeWrap.appendChild(timeHint);
-  block.appendChild(timeWrap);
-
-  wrapper.appendChild(block);
-
-  // Erreur de validation
-  const errBox = document.createElement('div');
-  errBox.style.cssText = 'font-size:11px;color:#f87171;text-align:center;margin-bottom:10px;min-height:14px;';
-  wrapper.appendChild(errBox);
-
-  // Enregistrer
-  const saveBtn = document.createElement('button');
-  saveBtn.textContent = existing ? '✓ Enregistrer les modifications' : '✓ Créer l\'objectif';
-  saveBtn.style.cssText = 'width:100%;padding:16px;background:#7c3aed;color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;';
-  saveBtn.onclick = function() {
-    if (!draft.name.trim() && !draft.date && !draft.distanceKm && !draft.dplus && !draft.targetTime) {
-      errBox.textContent = 'Renseigne au moins un nom ou une date.';
-      return;
-    }
-    errBox.textContent = '';
-    saveObjective({
-      name: draft.name.trim(),
-      date: draft.date || null,
-      distanceKm: draft.distanceKm,
-      dplus: draft.dplus,
-      targetTime: draft.targetTime,
-    });
-    pushSettings();
-    invalidateObjectiveCaches();
-    setState({ view: 'home' });
-  };
-  wrapper.appendChild(saveBtn);
-
-  // Supprimer (uniquement si un objectif existe)
-  if (existing) {
-    const delBtn = document.createElement('button');
-    delBtn.textContent = '🗑 Supprimer l\'objectif';
-    delBtn.style.cssText = 'width:100%;padding:14px;background:transparent;border:1px solid #3a1515;border-radius:14px;color:#f87171;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:14px;';
-    delBtn.onclick = function() {
-      showConfirm({
-        icon: '🗑',
-        title: 'Supprimer l\'objectif ?',
-        sub: 'Tu repasseras en entraînement libre : plus de compte à rebours, de phase ni d\'indice de confiance. Toutes les autres fonctions restent disponibles.',
-        okLabel: 'Supprimer',
-        onConfirm: function() {
-          clearObjective();
-          pushSettings();
-          invalidateObjectiveCaches();
-          setState({ view: 'home' });
-        }
-      });
-    };
-    wrapper.appendChild(delBtn);
-  }
-
-  const info = document.createElement('div');
-  info.style.cssText = 'font-size:11px;color:#7a889f;text-align:center;line-height:1.5;';
-  info.textContent = 'Modifier l\'objectif efface les analyses en cache, calculées sur l\'ancien contexte.';
-  wrapper.appendChild(info);
-
-  return wrapper;
-}
-
-/* ---------------- Préférences (séances max + jours uniquement) ---------------- */
-function renderPrefs() {
-  const prefs = loadPrefs();
-  var draft = { sessions: prefs.sessions, days: prefs.days.slice() };
-  const DAY_LABELS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
-
-  function buildUI() {
-    const container = document.getElementById('prefs-container');
-    if (!container) return;
-    container.innerHTML = '';
-
-    // Séances max / semaine
-    const sessBlock = document.createElement('div');
-    sessBlock.style.cssText = 'background:#0e1118;border:1px solid #1a2035;border-radius:14px;padding:16px;margin-bottom:12px;';
-    const sessTitle = document.createElement('div');
-    sessTitle.style.cssText = 'font-size:9px;color:#8b9ab3;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;font-weight:700;';
-    sessTitle.textContent = 'Seances de course max / semaine';
-    sessBlock.appendChild(sessTitle);
-    const sessHint = document.createElement('div');
-    sessHint.style.cssText = 'font-size:11px;color:#a3afc2;line-height:1.5;margin-bottom:12px;';
-    sessHint.textContent = 'Le nombre que tu peux faire au maximum. Le coach propose jusqu\'à ce nombre, et moins si c\'est plus pertinent.';
-    sessBlock.appendChild(sessHint);
-    const sessRow = document.createElement('div');
-    sessRow.style.cssText = 'display:flex;gap:10px;';
-    [3, 4, 5].forEach(function(n) {
-      const btn = document.createElement('button');
-      btn.textContent = String(n);
-      const active = draft.sessions === n;
-      btn.style.cssText = 'flex:1;padding:14px;border-radius:10px;border:2px solid '+(active?'#7c3aed':'#1a2035')+';background:'+(active?'#1a0f35':'#0e1118')+';color:'+(active?'#a78bfa':'#4b5563')+';font-size:18px;font-weight:800;cursor:pointer;';
-      btn.onclick = function() { draft.sessions = n; buildUI(); };
-      sessRow.appendChild(btn);
-    });
-    sessBlock.appendChild(sessRow);
-    container.appendChild(sessBlock);
-
-    // Jours disponibles
-    const daysBlock = document.createElement('div');
-    daysBlock.style.cssText = 'background:#0e1118;border:1px solid #1a2035;border-radius:14px;padding:16px;margin-bottom:20px;';
-    const daysTitle = document.createElement('div');
-    daysTitle.style.cssText = 'font-size:9px;color:#8b9ab3;text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;font-weight:700;';
-    daysTitle.textContent = 'Jours disponibles';
-    daysBlock.appendChild(daysTitle);
-    const daysRow = document.createElement('div');
-    daysRow.style.cssText = 'display:grid;grid-template-columns:repeat(7,1fr);gap:6px;';
-    DAY_LABELS.forEach(function(label, i) {
-      const active = draft.days.indexOf(i) >= 0;
-      const btn = document.createElement('button');
-      btn.style.cssText = 'padding:10px 0;border-radius:10px;border:2px solid '+(active?'#7c3aed':'#1a2035')+';background:'+(active?'#1a0f35':'#0e1118')+';color:'+(active?'#a78bfa':'#4b5563')+';font-size:11px;font-weight:700;cursor:pointer;text-align:center;';
-      btn.textContent = label;
-      btn.onclick = function() {
-        const idx = draft.days.indexOf(i);
-        if (idx >= 0) draft.days.splice(idx, 1);
-        else draft.days.push(i);
-        buildUI();
-      };
-      daysRow.appendChild(btn);
-    });
-    daysBlock.appendChild(daysRow);
-    container.appendChild(daysBlock);
-
-    const summary = document.getElementById('prefs-summary');
-    if (summary) {
-      const dayNames = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"];
-      const sel = draft.days.slice().sort(function(a,b){return a-b;}).map(function(d){return dayNames[d];});
-      summary.textContent = 'Jusqu\'à ' + draft.sessions + ' séances · ' + (sel.length ? sel.join(', ') : 'aucun jour sélectionné');
-    }
-  }
-
-  const wrapper = document.createElement('div');
-  wrapper.className = 'fade';
-  wrapper.style.cssText = 'padding:20px 18px;';
-
-  const nav = document.createElement('div');
-  nav.style.cssText = 'display:flex;align-items:center;gap:12px;margin-bottom:20px;';
-  const backBtn = document.createElement('button');
-  backBtn.textContent = '←';
-  backBtn.style.cssText = 'background:none;border:none;color:#7c3aed;font-size:22px;cursor:pointer;padding:0;line-height:1;';
-  backBtn.onclick = function() { setState({ view: 'home' }); };
-  const title = document.createElement('div');
-  title.style.cssText = 'font-size:16px;font-weight:800;color:#e2e8f0;';
-  title.textContent = '⚙️ Preferences';
-  nav.appendChild(backBtn);
-  nav.appendChild(title);
-  wrapper.appendChild(nav);
-
-  const container = document.createElement('div');
-  container.id = 'prefs-container';
-  wrapper.appendChild(container);
-
-  const summary = document.createElement('div');
-  summary.id = 'prefs-summary';
-  summary.style.cssText = 'font-size:11px;color:#a3afc2;text-align:center;margin-bottom:16px;';
-  wrapper.appendChild(summary);
-
-  const saveBtn = document.createElement('button');
-  saveBtn.textContent = '✓ Sauvegarder';
-  saveBtn.style.cssText = 'width:100%;padding:16px;background:#7c3aed;color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;';
-  saveBtn.onclick = function() {
-    savePrefsData({ sessions: draft.sessions, days: draft.days });
-    pushSettings();
-    saveBtn.textContent = '✓ Sauvegarde !';
-    saveBtn.style.background = '#059669';
-    setTimeout(function() { saveBtn.textContent = '✓ Sauvegarder'; saveBtn.style.background = '#7c3aed'; }, 1800);
-  };
-  wrapper.appendChild(saveBtn);
-
-  const info = document.createElement('div');
-  info.style.cssText = 'font-size:11px;color:#7a889f;text-align:center;line-height:1.5;';
-  info.textContent = 'Ces preferences sont injectees dans l\'analyse Claude pour personnaliser tes seances.';
-  wrapper.appendChild(info);
-
-  setTimeout(buildUI, 0);
-  return wrapper;
-}
-
-function renderLogin() {
-  return h('div', {class:'fade',style:{padding:'40px 18px',textAlign:'center'}},
-    h('div', {style:{fontSize:'40px',marginBottom:'16px'}}, '🏃'),
-    h('div', {style:{fontSize:'20px',fontWeight:'800',color:'#fff',marginBottom:'8px'}}, 'Coach'),
-    h('div', {style:{fontSize:'13px',color:'#a3afc2',marginBottom:'32px',lineHeight:'1.6'}}, 'Connecte ton compte Strava pour des recommandations basees sur tes vraies donnees.'),
-    h('button', {onclick:connectStrava,style:{width:'100%',padding:'18px',borderRadius:'14px',background:'#FC4C02',color:'#fff',fontSize:'16px',fontWeight:'700'}}, '🚴 Connecter Strava'));
-}
-
-function renderLoading() {
-  return h('div', {style:{display:'flex',flexDirection:'column',alignItems:'center',gap:'16px',padding:'60px 18px'}},
-    h('div', {style:{width:'44px',height:'44px',borderRadius:'50%',border:'3px solid #1a2035',borderTopColor:'#a78bfa',animation:'spin 0.8s linear infinite'}}),
-    h('div', {style:{fontSize:'13px',color:'#a3afc2'}}, 'Analyse détaillée de tes séances…'),
-    h('div', {style:{fontSize:'11px',color:'#7a889f',marginTop:'4px',textAlign:'center',lineHeight:'1.5'}}, 'Lecture des données Strava puis Claude AI. Ça peut prendre quelques secondes de plus.'));
-}
-
-function renderError() {
-  return h('div', {class:'fade',style:{padding:'20px 18px'}},
-    h('div', {style:{background:'#1a0a0a',borderRadius:'14px',padding:'20px',border:'1px solid #3a1515',marginBottom:'16px'}},
-      h('div', {style:{fontSize:'15px',fontWeight:'700',color:'#f87171',marginBottom:'8px'}}, 'Erreur'),
-      h('div', {style:{fontSize:'12px',color:'#a3afc2',lineHeight:'1.5',wordBreak:'break-word'}}, state.error)),
-    state.lastAction ? h('button', {
-      onclick: function() { analyze(state.lastAction.mode, state.lastAction.extra, state.lastAction.comment); },
-      style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#7c3aed',color:'#fff',fontSize:'14px',fontWeight:'700',marginBottom:'10px'}
-    }, '↻ Reessayer') : null,
-    h('button', {onclick:function(){setState({view:'home',error:null});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#e2e8f0',fontSize:'14px',fontWeight:'700'}}, '← Retour'));
-}
-
-function renderCross() {
-  return h('div', {class:'fade',style:{padding:'20px 18px'}},
-    h('div', {style:{fontSize:'14px',fontWeight:'700',color:'#e2e8f0',marginBottom:'4px'}}, '🚴 Quel sport as-tu fait ?'),
-    h('div', {style:{fontSize:'12px',color:'#a3afc2',marginBottom:'18px'}}, 'Compté dans ta charge · j\'adapte ta prochaine séance.'),
-    h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'16px'}},
-      h('button', {onclick:function(){ showCommentDialog(function(c){ analyze('cross','Velo',c); }); },style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '🚴'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Velo')),
-      h('button', {onclick:function(){ showCommentDialog(function(c){ analyze('cross','Natation',c); }); },style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '🏊'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Natation')),
-      h('button', {onclick:function(){ showCommentDialog(function(c){ analyze('cross','Rando',c); }); },style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '🥾'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Rando')),
-      h('button', {onclick:function(){ showCommentDialog(function(c){ analyze('cross','Autre',c); }); },style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'20px 12px',color:'#e2e8f0',textAlign:'center'}}, h('div', {style:{fontSize:'28px',marginBottom:'6px'}}, '⚡'), h('div', {style:{fontSize:'13px',fontWeight:'600'}}, 'Autre'))),
-    h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'transparent',border:'1px solid #1a2035',color:'#a3afc2',fontSize:'13px'}}, '← Retour'));
-}
-
-/* ---------------- Dernière séance ---------------- */
-function verdictColor(v) {
-  return { reussie:'#34d399', partielle:'#fbbf24', ratee:'#f87171', libre:'#a78bfa' }[v] || '#a78bfa';
+function verdictChip(a) {
+  const st = verdictStyle(a.verdict);
+  return h('span', {class:'chip', style:{background:st.bg,color:st.fg}}, a.verdictLabel || a.verdict || '');
 }
 function fmtShortDate(iso) {
   if (!iso) return '';
@@ -1278,59 +716,615 @@ function fmtDateTime(ts) {
   if (!ts) return '-';
   return new Date(ts).toLocaleString('fr-FR', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
 }
+function todayLabel() {
+  return new Date().toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'short' });
+}
+// "Du 9 au 15 nov." à partir du lundi YYYY-MM-DD
+function weekRangeLabel(ws) {
+  if (!ws) return '';
+  const a = new Date(ws + 'T12:00:00');
+  if (isNaN(a.getTime())) return '';
+  const b = new Date(a); b.setDate(a.getDate() + 6);
+  const m = function(d) { return d.toLocaleDateString('fr-FR', { month:'short' }); };
+  return a.getMonth() === b.getMonth()
+    ? 'Du ' + a.getDate() + ' au ' + b.getDate() + ' ' + m(b)
+    : 'Du ' + a.getDate() + ' ' + m(a) + ' au ' + b.getDate() + ' ' + m(b);
+}
+// "aujourd'hui" / "demain" / "jeudi"
+function dayRel(nextDay) {
+  if (!nextDay) return '';
+  const t = new Date().getDay();
+  if (nextDay === FULL_DAYS_FR[t]) return "aujourd'hui";
+  if (nextDay === FULL_DAYS_FR[(t + 1) % 7]) return 'demain';
+  return String(nextDay).toLowerCase();
+}
+function currentResult() {
+  return state.result || (loadCache() ? loadCache().result : null);
+}
+function hrLabel(v) {
+  if (!has(v)) return '';
+  const s = String(v).trim();
+  return /^fc/i.test(s) ? s : 'FC ' + s;
+}
 
-function renderLast() {
+/* ============================================================
+   Barre d'onglets
+   ============================================================ */
+function renderTabBar() {
+  const cur = VIEW_TAB[state.view] || 'home';
+  const tabs = [
+    { id:'home', label:'Séance', ic:'bolt' },
+    { id:'week', label:'Semaine', ic:'cal' },
+    { id:'analyses', label:'Analyses', ic:'chart' },
+    { id:'profil', label:'Profil', ic:'user' },
+  ];
+  return h('nav', {class:'tabbar', 'aria-label':'Navigation'},
+    tabs.map(function(t) {
+      const on = cur === t.id;
+      return h('button', {class:'tab' + (on ? ' on' : ''), 'aria-current': on ? 'page' : null, onclick:function(){ setState({ view:t.id, weekDetail:null }); }},
+        icon(t.ic, 24), h('span', null, t.label));
+    }));
+}
+
+/* ============================================================
+   Onglet SÉANCE (accueil)
+   ============================================================ */
+function renderHome() {
+  const o = loadObjective();
+  const days = objectiveDays(o);
+  const conf = loadConfidence();
+  const d = currentResult();
+
+  // En-tête : date, objectif, compte à rebours
+  const head = h('div', {class:'tap', onclick:function(){ setState({ view:'objective' }); }, style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end',gap:'12px',marginBottom:'22px'}},
+    h('div', {style:{minWidth:'0'}},
+      h('div', {class:'eyebrow'}, todayLabel()),
+      h('div', {class:'d', style:{fontSize:'22px',fontWeight:'700',marginTop:'6px',lineHeight:'1.15'}}, o ? (o.name || 'Mon objectif') : 'Entraînement libre'),
+      o && days != null ? h('div', {class:'muted', style:{fontSize:'13px',marginTop:'4px'}}, 'Phase ' + getPhase(days).label.toLowerCase() + (o.targetTime ? ' · visé ' + timeLabel(o.targetTime) : '')) : null,
+      !o ? h('div', {class:'muted', style:{fontSize:'13px',marginTop:'4px'}}, 'Toucher pour fixer un objectif') : null),
+    o && days != null ? h('div', {style:{textAlign:'right',flexShrink:'0'}},
+      h('div', {class:'d', style:{fontSize:'26px',fontWeight:'800',color:'var(--pink-text)',lineHeight:'1'}}, 'J-' + days),
+      conf !== null ? h('div', {class:'muted', style:{fontSize:'12px',marginTop:'6px'}}, 'Confiance ' + conf + ' %') : null) : null);
+
+  // Carte principale : prochaine séance
+  let hero;
+  if (d) {
+    const pills = [d.pace, hrLabel(d.hr), d.duration].filter(has);
+    hero = h('div', {class:'hero'},
+      h('div', {class:'eyebrow'}, 'Prochaine séance' + (d.nextDay ? ' · ' + dayRel(d.nextDay) : '')),
+      h('div', {class:'d', style:{fontSize:'32px',fontWeight:'800',lineHeight:'1.08',margin:'12px 0 16px',wordBreak:'break-word'}},
+        d.type || d.headline || 'Séance', has(d.distance) ? h('br') : null, has(d.distance) ? d.distance : null),
+      pills.length ? h('div', {style:{display:'flex',gap:'6px',flexWrap:'wrap',marginBottom:'20px'}}, pills.map(function(p){ return h('span', {class:'pill'}, p); })) : null,
+      h('button', {class:'btn btn-primary', onclick:function(){ setState({ result:d, view:'result' }); }}, 'Voir la séance'));
+  } else {
+    hero = h('div', {class:'hero'},
+      h('div', {class:'eyebrow'}, 'Prochaine séance'),
+      h('div', {class:'d', style:{fontSize:'24px',fontWeight:'800',lineHeight:'1.15',margin:'12px 0 20px'}}, 'Pas encore calculée'),
+      h('button', {class:'btn btn-primary', onclick:function(){ analyzeWithComment('session'); }}, 'Calculer ma séance'));
+  }
+
+  const actions = h('div', {class:'grid3', style:{marginTop:'8px'}},
+    d ? h('button', {class:'btn', onclick:function(){ analyzeWithComment('session'); }}, 'Recalculer') : null,
+    h('button', {class:'btn', onclick:function(){ analyzeWithComment('fatigue'); }}, 'Fatigué'),
+    h('button', {class:'btn', onclick:function(){ setState({ view:'cross' }); }}, 'Autre sport'));
+  if (!d) actions.style.gridTemplateColumns = '1fr 1fr';
+
+  // Alerte : plusieurs jours sans courir
+  const noRun = daysSinceLastRun();
+  const alertEl = (noRun !== null && noRun >= 4)
+    ? h('div', {class:'card', style:{marginTop:'8px',display:'flex',gap:'12px',alignItems:'center'}},
+        h('span', {style:{width:'26px',height:'26px',background:'var(--pink)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:'0'}}, icon('alert', 16, '#14121C', 3)),
+        h('div', {style:{fontSize:'14px',lineHeight:'1.4'}}, h('b', null, noRun + ' jours sans course.'), ' Reprise en douceur.'))
+    : null;
+
+  // Dernière séance
   const L = loadLast();
-  if (!L || !L.body || !L.body.analysis) return renderHome();
-  const b = L.body, a = b.analysis;
-  const vc = verdictColor(a.verdict);
-  const has = function(v){ return v && String(v).trim(); };
-  const title = function(t) { return h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'8px',fontWeight:'700'}}, t); };
-  const card = function() { return h.apply(null, ['div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}}].concat(Array.prototype.slice.call(arguments))); };
-  const bullets = function(items, color) {
-    return (items || []).map(function(t) {
-      return h('div', {style:{display:'flex',gap:'8px',alignItems:'flex-start',marginBottom:'6px'}},
-        h('div', {style:{width:'5px',height:'5px',borderRadius:'50%',background:color,flexShrink:'0',marginTop:'6px'}}),
-        h('div', {style:{fontSize:'12px',color:'#c4cdd8',lineHeight:'1.5'}}, t));
-    });
-  };
+  let lastEl;
+  if (L && L.body && L.body.analysis) {
+    const a = L.body.analysis;
+    lastEl = h('button', {class:'card', style:{display:'block',width:'100%',textAlign:'left'}, onclick:function(){ setState({ view:'analyses', anaTab:'last' }); }},
+      h('div', {style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'10px'}},
+        h('div', {class:'d', style:{fontSize:'16px',fontWeight:'700',lineHeight:'1.25'}}, a.title || 'Séance'),
+        verdictChip(a)),
+      h('div', {class:'muted', style:{fontSize:'13px',marginTop:'6px'}},
+        [fmtShortDate(L.body.date), L.body.distanceKm ? fmtKm(L.body.distanceKm) + ' km' : null].filter(Boolean).join(' · ')));
+  } else {
+    lastEl = h('button', {class:'btn', onclick:function(){ analyzeLastNow(); }}, 'Analyser ma dernière course');
+  }
 
-  const nums = (a.keyNumbers || []).map(function(n) {
-    return h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'12px',borderBottom:'2px solid '+vc+'35'}},
-      h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'5px',fontWeight:'700'}}, n.label),
-      h('div', {style:{fontSize:'15px',fontWeight:'800',color:'#e2e8f0',lineHeight:'1.2'}}, n.value));
+  return h('div', {class:'screen fade'},
+    head, hero, actions, alertEl,
+    h('div', {class:'sec'}, h('div', {class:'eyebrow'}, 'Dernière séance')),
+    lastEl,
+    volumeChart(),
+    footerLine());
+}
+
+// Graphe du volume de course, 12 dernières semaines (donnée brute, sans commentaire)
+function volumeChart() {
+  const vol = loadVolume();
+  if (!vol || !vol.length) return null;
+  const maxV = Math.max.apply(null, vol.map(function(v){ return v.km || 0; }).concat([1]));
+  const done = vol.slice(Math.max(0, vol.length - 5), vol.length - 1);
+  const avg = done.length ? Math.round(done.reduce(function(s, v){ return s + (v.km || 0); }, 0) / done.length * 10) / 10 : null;
+  const lab = function(iso) { const p = (iso || '').split('-'); return p.length === 3 ? (+p[2]) + '/' + (+p[1]) : ''; };
+  const bars = vol.map(function(v, i) {
+    const cur = i === vol.length - 1;
+    const km = v.km || 0;
+    const showLab = cur || i % 3 === 0;
+    return h('div', {style:{flex:'1',display:'flex',flexDirection:'column',justifyContent:'flex-end',alignItems:'center',height:'136px',minWidth:'0'}},
+      cur ? h('div', {style:{fontSize:'11px',fontWeight:'700',marginBottom:'4px',whiteSpace:'nowrap'}}, fmtKm(km)) : null,
+      h('div', {title: fmtKm(km) + ' km', style:{width:'100%',height:(km > 0 ? Math.max(4, Math.round(km / maxV * 100)) : 2)+'px',background: km > 0 ? (cur ? 'var(--pink)' : 'var(--violet)') : 'var(--soft)'}}),
+      h('div', {class:'muted', style:{fontSize:'10px',marginTop:'6px',height:'12px',whiteSpace:'nowrap'}}, showLab ? lab(v.start) : ''));
+  });
+  return h('div', null,
+    h('div', {class:'sec'},
+      h('div', {class:'eyebrow'}, 'Volume · 12 semaines'),
+      avg !== null ? h('div', {class:'muted', style:{fontSize:'12px'}}, 'moy. 4 sem. ', h('b', {style:{color:'var(--ink)'}}, fmtKm(avg) + ' km')) : null),
+    h('div', {class:'card', style:{padding:'14px 14px 10px'}},
+      h('div', {style:{display:'flex',gap:'5px',alignItems:'flex-end'}}, bars)));
+}
+
+function footerLine() {
+  const sync = syncStatus();
+  const txt = sync === null ? 'serveur non relié'
+    : sync === 'ok' ? 'serveur relié'
+    : sync === 'off' ? 'serveur indisponible'
+    : sync === 'err' ? 'serveur injoignable' : 'synchro…';
+  return h('button', {onclick:function(){ openStatus(); }, style:{display:'block',width:'100%',textAlign:'center',fontSize:'11px',color:'var(--muted)',marginTop:'22px',minHeight:'44px'}},
+    'Coach v' + APP_VERSION + ' · ' + txt + ' · état');
+}
+
+/* ============================================================
+   Détail de la prochaine séance
+   ============================================================ */
+// Couleur d'un bloc : échauffement bleu, retour au calme bleu, corps de séance couleur du type
+function phaseColor(phase, mainColor) {
+  const p = (phase || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (p.indexOf('chauff') >= 0 || p.indexOf('calme') >= 0) return '#2E6BFF';
+  return mainColor;
+}
+
+function renderResult() {
+  const d = currentResult();
+  if (!d) return renderHome();
+  const typeRun = normalizeRun(d.type || '') || normalizeRun(d.headline || '');
+  const main = typeRun && typeRun.color !== '#14121C' ? typeRun.color : '#7B2CFF';
+
+  const stats = [];
+  if (has(d.distance)) stats.push(['Distance', d.distance]);
+  if (has(d.duration)) stats.push(['Durée', d.duration]);
+  if (has(d.pace)) stats.push(['Allure', d.pace]);
+  if (has(d.hr)) stats.push(['FC', String(d.hr).replace(/^FC\s*/i, '')]);
+  if (has(d.dplus)) stats.push(['D+', d.dplus]);
+  if (has(d.rpe)) stats.push(['RPE', d.rpe]);
+
+  const blocks = Array.isArray(d.structure) ? d.structure.filter(function(b){ return b && (has(b.detail) || has(b.phase)); }) : [];
+  const structure = blocks.length ? h('div', {class:'card'},
+    blocks.map(function(b, i) {
+      const c = phaseColor(b.phase, main);
+      return h('div', {style:{display:'flex',gap:'14px',paddingBottom: i < blocks.length - 1 ? '14px' : '0',marginBottom: i < blocks.length - 1 ? '14px' : '0',borderBottom: i < blocks.length - 1 ? '1px solid var(--line2)' : 'none'}},
+        h('div', {style:{width:'6px',background:c,flexShrink:'0'}}),
+        h('div', {style:{flex:'1',minWidth:'0'}},
+          has(b.phase) ? h('div', {class:'eyebrow', style:{color:'var(--ink)',marginBottom:'4px'}}, b.phase) : null,
+          has(b.detail) ? h('div', {style:{fontSize:'15px',lineHeight:'1.45'}}, b.detail) : null,
+          (has(b.pace) || has(b.hr)) ? h('div', null, has(b.pace) ? h('span', {class:'tag'}, b.pace) : null, has(b.hr) ? h('span', {class:'tag'}, hrLabel(b.hr)) : null) : null));
+    })) : null;
+
+  const nutri = [['Avant', d.before], ['Pendant', d.during], ['Après', d.after], ['Équipement', d.gear]].filter(function(x){ return has(x[1]); });
+
+  return h('div', {class:'screen fade'},
+    backBar('Séance', 'home'),
+    h('div', {class:'hero'},
+      h('div', {class:'eyebrow'}, 'Séance recommandée' + (d.nextDay ? ' · ' + dayRel(d.nextDay) : '')),
+      h('div', {class:'d', style:{fontSize:'28px',fontWeight:'800',lineHeight:'1.1',margin:'12px 0 8px',wordBreak:'break-word'}}, d.headline || d.type),
+      h('div', {style:{fontSize:'14px',fontWeight:'600'}}, (has(d.zone) && has(d.type) && String(d.zone).toLowerCase().indexOf(String(d.type).toLowerCase()) === 0) ? d.zone : [d.type, d.zone].filter(has).join(' · '))),
+    has(d.goal) ? h('div', {class:'card', style:{marginTop:'8px',fontSize:'15px',lineHeight:'1.5'}}, d.goal) : null,
+    stats.length ? h('div', {class:'grid2', style:{marginTop:'8px'}}, stats.map(function(s) {
+      return h('div', {class:'stat'}, h('div', {class:'n', style:{fontSize:'17px'}}, s[1]), h('div', {class:'l'}, s[0]));
+    })) : null,
+    structure ? h('div', {class:'sec'}, h('div', {class:'eyebrow'}, 'Déroulé')) : null,
+    structure,
+    has(d.success) ? h('div', {class:'card', style:{marginTop:'8px',background:'var(--ink)',color:'#FFFFFF'}},
+      h('div', {class:'eyebrow', style:{color:'#FFFFFF',marginBottom:'6px'}}, 'Réussie si'),
+      h('div', {style:{fontSize:'15px',lineHeight:'1.45'}}, d.success)) : null,
+    h('button', {class:'btn', style:{marginTop:'8px'}, onclick:function(){ setState({ more: !state.more }); }},
+      state.more ? 'Masquer les détails' : 'Pourquoi, nutrition, équipement', icon(state.more ? 'up' : 'down', 18)),
+    state.more ? h('div', {style:{marginTop:'8px'}},
+      has(d.why) ? h('div', {class:'card'}, h('div', {class:'eyebrow', style:{marginBottom:'6px'}}, 'Pourquoi'), h('div', {style:{fontSize:'14px',lineHeight:'1.5'}}, d.why)) : null,
+      has(d.tip) ? h('div', {class:'card'}, h('div', {class:'eyebrow', style:{marginBottom:'6px'}}, 'Conseil'), h('div', {style:{fontSize:'14px',lineHeight:'1.5'}}, d.tip)) : null,
+      nutri.length ? h('div', {class:'card', style:{padding:'4px 18px'}}, nutri.map(function(x) {
+        return h('div', {class:'row', style:{alignItems:'flex-start'}}, h('span', {class:'k', style:{flexShrink:'0'}}, x[0]), h('span', {style:{fontSize:'14px',textAlign:'right',lineHeight:'1.4'}}, x[1]));
+      })) : null) : null,
+    h('button', {class:'btn btn-dark', style:{marginTop:'16px'}, onclick:function(){ setState({ view:'week' }); }}, 'Voir la semaine'));
+}
+
+/* ============================================================
+   Onglet SEMAINE
+   ============================================================ */
+function planWeekKind() {
+  const ws = loadWeekStart();
+  if (!ws) return null;
+  const cur = getMondayStr();
+  if (ws === cur) return 'current';
+  return ws > cur ? 'next' : 'past';
+}
+function toggleWeekDetail(day) {
+  setState({ weekDetail: state.weekDetail === day ? null : day });
+}
+
+function renderWeek() {
+  const week = loadWeeklyPlan();
+  const kind = planWeekKind();
+  const ws = loadWeekStart();
+  const d = currentResult();
+  const logic = loadWeekLogic();
+  if (!week || !week.length) {
+    return h('div', {class:'screen fade'},
+      h('div', {class:'h1', style:{marginBottom:'10px'}}, 'Semaine'),
+      h('div', {class:'muted', style:{fontSize:'15px',lineHeight:'1.5',marginBottom:'18px'}}, 'Pas encore de programme.'),
+      h('button', {class:'btn btn-primary', onclick:function(){ analyzeWithComment('session'); }}, 'Calculer mon programme'));
+  }
+
+  // Titre : partie avant " : " du fil conducteur si elle est courte
+  let title = kind === 'next' ? 'Semaine prochaine' : kind === 'past' ? 'Semaine passée' : 'Cette semaine';
+  let sub = logic || '';
+  if (logic) {
+    const i = logic.indexOf(' : ');
+    if (i > 0 && i <= 26) { title = logic.slice(0, i); sub = logic.slice(i + 3); sub = sub.charAt(0).toUpperCase() + sub.slice(1); }
+  }
+  const runs = week.filter(function(w){ return normalizeRun(w.session); });
+  const doneKm = kind === 'current' ? loadWeekDone() : null;
+  const plannedKm = runs.reduce(function(s, w) {
+    const km = parseFloat((extractKm(w.session) || '0').replace(',', '.'));
+    return s + (isNaN(km) ? 0 : km);
+  }, 0);
+  const kmTxt = doneKm !== null ? fmtKm(doneKm) + ' km' : plannedKm > 0 ? fmtKm(Math.round(plannedKm)) + ' km prévus' : '';
+  const nextAbbr = d && d.nextDay ? Object.keys(DAY_FULL).find(function(k){ return DAY_FULL[k] === d.nextDay; }) : null;
+
+  const rows = week.map(function(w) {
+    const run = normalizeRun(w.session);
+    const open = state.weekDetail === w.day;
+    const isNext = !w.done && nextAbbr === w.day;
+    if (!run) {
+      return h('div', {style:{display:'flex',alignItems:'center',gap:'14px',padding:'10px 14px'}},
+        h('div', {style:{width:'34px',fontSize:'13px',fontWeight:'700',color:'var(--muted)'}}, w.day),
+        h('div', {style:{width:'6px',height:'6px',background:'#D9D3E4'}}),
+        h('div', {class:'muted', style:{flex:'1',fontSize:'14px'}}, w.session || 'Repos'));
+    }
+    const detail = has(w.detail) ? w.detail : 'Détail indisponible : recalcule la séance pour l\'obtenir.';
+    return h('div', {style:{background:'var(--card)',border: isNext ? '2px solid var(--blue)' : '2px solid transparent'}},
+      h('button', {onclick:function(){ toggleWeekDetail(w.day); }, 'aria-expanded': open ? 'true' : 'false', style:{display:'flex',alignItems:'center',gap:'14px',width:'100%',padding:'12px',textAlign:'left',minHeight:'54px'}},
+        h('div', {style:{width:'34px',fontSize:'13px',fontWeight:'700',color: isNext ? 'var(--ink)' : 'var(--muted)'}}, w.day),
+        h('div', {style:{width:'6px',height:'30px',background:run.color,flexShrink:'0'}}),
+        h('div', {style:{flex:'1',fontSize:'15px',fontWeight: isNext ? '700' : '600',minWidth:'0'}}, w.session),
+        w.done ? h('span', {role:'img','aria-label':'Faite',style:{display:'inline-flex'}}, icon('check', 20, '#5E586F', 2.5))
+          : isNext ? h('span', {style:{fontSize:'12px',fontWeight:'700',color:'var(--blue)'}}, 'À venir') : null),
+      open ? h('div', {style:{padding:'0 14px 14px 68px',fontSize:'14px',lineHeight:'1.5',color:'var(--ink)'}}, detail) : null);
   });
 
-  return h('div', {class:'fade',style:{padding:'20px 18px'}},
-    h('div', {style:{fontSize:'10px',color:'#7a889f',marginBottom:'10px',textAlign:'right'}},
-      'Analyse ' + (b.source === 'webhook' ? 'automatique' : 'manuelle') + ' · il y a ' + formatAge(L.savedAt)),
-    h('div', {style:{background:'linear-gradient(135deg,#1a0f35,#0d1a35)',borderRadius:'16px',padding:'20px 18px',marginBottom:'10px',border:'1px solid #2a1f4a'}},
-      h('div', {style:{fontSize:'9px',color:'#a3afc2',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'5px',fontWeight:'700'}}, 'Derniere seance · ' + fmtShortDate(b.date)),
-      h('div', {style:{fontSize:'22px',fontWeight:'900',color:'#fff',letterSpacing:'-0.5px',marginBottom:'8px'}}, a.title || 'Séance'),
-      h('span', {style:{display:'inline-block',fontSize:'12px',fontWeight:'800',color:vc,background:vc+'20',border:'1px solid '+vc+'45',borderRadius:'8px',padding:'5px 10px'}}, a.verdictLabel || a.verdict || ''),
-      has(a.summary) ? h('div', {style:{fontSize:'13px',color:'#c4cdd8',lineHeight:'1.5',marginTop:'12px'}}, a.summary) : null),
-    (has(a.planned) || has(a.done)) ? card(
-      has(a.planned) ? h('div', {style:{marginBottom: has(a.done) ? '10px' : '0'}},
-        h('div', {style:{fontSize:'10px',color:'#8b9ab3',fontWeight:'700',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'4px'}}, 'Prévu'),
-        h('div', {style:{fontSize:'12px',color:'#a3afc2',lineHeight:'1.5'}}, a.planned)) : null,
-      has(a.done) ? h('div', null,
-        h('div', {style:{fontSize:'10px',color:vc,fontWeight:'700',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'4px'}}, 'Réalisé'),
-        h('div', {style:{fontSize:'13px',color:'#e2e8f0',lineHeight:'1.5'}}, a.done)) : null) : null,
-    nums.length ? h.apply(null, ['div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'10px'}}].concat(nums)) : null,
-    (a.blocks && a.blocks.length) ? card(title('Déroulé réel'),
-      a.blocks.map(function(bl, i) {
-        return h('div', {style:{display:'flex',gap:'10px',padding:'7px 0',borderBottom: i < a.blocks.length - 1 ? '1px solid #1a2035' : 'none'}},
-          h('div', {style:{fontSize:'11px',color:vc,fontWeight:'800',minWidth:'70px',flexShrink:'0'}}, bl.label),
-          h('div', {style:{fontSize:'12px',color:'#e2e8f0',lineHeight:'1.5'}}, bl.detail));
+  return h('div', {class:'screen fade'},
+    h('div', {class:'eyebrow'}, weekRangeLabel(ws)),
+    h('div', {style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:'12px',margin:'8px 0 6px'}},
+      h('div', {class:'h1'}, title),
+      kmTxt ? h('div', {class:'d', style:{fontSize:'17px',fontWeight:'700',color:'var(--pink-text)',whiteSpace:'nowrap'}}, kmTxt) : null),
+    sub ? h('div', {class:'muted', style:{fontSize:'14px',lineHeight:'1.45'}}, sub) : null,
+    kind === 'past' ? h('div', {class:'card', style:{marginTop:'12px',fontSize:'14px'}}, 'Programme périmé : recalcule ta séance pour le mettre à jour.') : null,
+    h('div', {style:{display:'flex',flexDirection:'column',gap:'6px',marginTop:'20px'}}, rows),
+    h('div', {class:'muted', style:{fontSize:'12px',marginTop:'12px'}}, 'Touche une séance pour voir son contenu.'));
+}
+
+/* ============================================================
+   Onglet ANALYSES : dernière séance | bilan
+   ============================================================ */
+function renderAnalyses() {
+  const seg = h('div', {class:'seg', role:'tablist'},
+    h('button', {class: state.anaTab !== 'bilan' ? 'on' : '', role:'tab', onclick:function(){ setState({ anaTab:'last', more:false }); }}, 'Dernière séance'),
+    h('button', {class: state.anaTab === 'bilan' ? 'on' : '', role:'tab', onclick:function(){ setState({ anaTab:'bilan', more:false }); }}, 'Bilan'));
+  return h('div', {class:'screen fade'}, seg, state.anaTab === 'bilan' ? bilanBody() : lastBody());
+}
+
+function lastBody() {
+  const L = loadLast();
+  if (!L || !L.body || !L.body.analysis) {
+    return h('div', null,
+      h('div', {class:'muted', style:{fontSize:'15px',lineHeight:'1.5',marginBottom:'16px'}}, 'Aucune séance analysée. Tes courses sont analysées automatiquement dès qu\'elles arrivent sur Strava.'),
+      h('button', {class:'btn btn-primary', onclick:function(){ analyzeLastNow(); }}, 'Analyser ma dernière course'));
+  }
+  const b = L.body, a = b.analysis;
+  const nums = (a.keyNumbers || []).slice(0, 4);
+  const planned = has(a.planned) ? a.planned : '';
+  const pos = (a.positives || []).slice(0, 2);
+  const imp = (a.improve || []).slice(0, 2);
+
+  return h('div', null,
+    h('div', {class:'eyebrow'}, fmtShortDate(b.date)),
+    h('div', {style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'12px',margin:'8px 0 16px'}},
+      h('div', {class:'h1', style:{minWidth:'0',wordBreak:'break-word'}}, a.title || 'Séance'),
+      verdictChip(a)),
+    nums.length ? h('div', {class:'grid2'}, nums.map(function(n) {
+      return h('div', {class:'stat'}, h('div', {class:'n'}, n.value), h('div', {class:'l'}, n.label));
+    })) : null,
+    (planned || has(a.done)) ? h('div', {class:'card', style:{marginTop:'8px'}},
+      planned ? h('div', {style:{display:'flex',gap:'12px',alignItems:'baseline',marginBottom: has(a.done) ? '10px' : '0'}},
+        h('div', {class:'eyebrow', style:{width:'60px',flexShrink:'0'}}, 'Prévu'), h('div', {style:{fontSize:'14px',fontWeight:'600',lineHeight:'1.4'}}, planned)) : null,
+      has(a.done) ? h('div', {style:{display:'flex',gap:'12px',alignItems:'baseline'}},
+        h('div', {class:'eyebrow', style:{width:'60px',flexShrink:'0'}}, 'Fait'), h('div', {style:{fontSize:'14px',fontWeight:'600',lineHeight:'1.4'}}, a.done)) : null) : null,
+    (pos.length || imp.length) ? h('div', {style:{margin:'20px 0'}},
+      pos.map(function(t) {
+        return h('div', {class:'bullet'}, h('span', {class:'ic', style:{background:'var(--blue)'}}, icon('check', 16, '#FFFFFF', 3)), h('div', {class:'t'}, t));
+      }),
+      imp.map(function(t) {
+        return h('div', {class:'bullet'}, h('span', {class:'ic', style:{background:'var(--pink)'}}, icon('alert', 16, '#14121C', 3)), h('div', {class:'t'}, t));
       })) : null,
-    has(a.hr) ? card(title('Fréquence cardiaque'), h('div', {style:{fontSize:'12px',color:'#c4cdd8',lineHeight:'1.6'}}, a.hr)) : null,
-    has(a.fatigue) ? card(title('Forme et fatigue'), h('div', {style:{fontSize:'12px',color:'#c4cdd8',lineHeight:'1.6'}}, a.fatigue)) : null,
-    (a.positives && a.positives.length) ? card(title('✅ Points positifs'), bullets(a.positives, '#34d399')) : null,
-    (a.improve && a.improve.length) ? card(title('⚠️ À améliorer'), bullets(a.improve, '#fbbf24')) : null,
-    has(a.impact) ? h('div', {style:{background:'#080b10',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px',border:'1px dashed #334155'}},
-      title('Pour la suite'), h('div', {style:{fontSize:'12px',color:'#a3afc2',lineHeight:'1.6'}}, a.impact)) : null,
-    (state.result || loadCache()) ? h('button', {onclick:function(){ const r = state.result || (loadCache() ? loadCache().result : null); setState({ result:r, view:'result' }); },style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#1a0f35',border:'1px solid #7c3aed55',color:'#a78bfa',fontSize:'13px',fontWeight:'700',marginBottom:'10px'}}, 'Voir la prochaine seance ›') : null,
-    h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#a3afc2',fontSize:'13px',fontWeight:'600'}}, '← Retour'));
+    has(a.impact) ? h('div', {class:'card', style:{background:'#E9DEFF'}},
+      h('div', {class:'eyebrow', style:{color:'var(--violet-dark)',marginBottom:'6px'}}, 'Pour la suite'),
+      h('div', {style:{fontSize:'15px',lineHeight:'1.45'}}, a.impact)) : null,
+    h('button', {class:'btn', style:{marginTop:'8px'}, onclick:function(){ setState({ more: !state.more }); }},
+      state.more ? 'Masquer le détail' : 'Voir le détail', icon(state.more ? 'up' : 'down', 18)),
+    state.more ? h('div', {style:{marginTop:'8px'}},
+      has(a.summary) ? h('div', {class:'card', style:{fontSize:'14px',lineHeight:'1.5'}}, a.summary) : null,
+      (a.blocks && a.blocks.length) ? h('div', {class:'card', style:{padding:'4px 18px'}}, a.blocks.map(function(bl) {
+        return h('div', {class:'row', style:{alignItems:'flex-start',justifyContent:'flex-start'}},
+          h('span', {style:{fontSize:'13px',fontWeight:'700',minWidth:'84px',flexShrink:'0'}}, bl.label),
+          h('span', {style:{fontSize:'14px',lineHeight:'1.4'}}, bl.detail));
+      })) : null,
+      has(a.hr) ? h('div', {class:'card'}, h('div', {class:'eyebrow', style:{marginBottom:'6px'}}, 'Fréquence cardiaque'), h('div', {style:{fontSize:'14px',lineHeight:'1.5'}}, a.hr)) : null,
+      has(a.fatigue) ? h('div', {class:'card'}, h('div', {class:'eyebrow', style:{marginBottom:'6px'}}, 'Forme'), h('div', {style:{fontSize:'14px',lineHeight:'1.5'}}, a.fatigue)) : null,
+      (b.planned && b.planned !== planned) ? h('div', {class:'card'}, h('div', {class:'eyebrow', style:{marginBottom:'6px'}}, 'Séance prévue (détail)'), h('div', {style:{fontSize:'13px',lineHeight:'1.5',color:'var(--muted)'}}, b.planned)) : null) : null,
+    h('div', {class:'grid2', style:{marginTop:'16px'}},
+      h('button', {class:'btn', onclick:function(){ analyzeLastNow(); }}, 'Réanalyser'),
+      h('button', {class:'btn btn-dark', onclick:function(){ setState({ view:'home' }); }}, 'Prochaine séance')),
+    h('div', {class:'muted', style:{fontSize:'12px',textAlign:'center',marginTop:'12px'}},
+      'Analyse ' + (b.source === 'webhook' ? 'automatique' : 'manuelle') + ' · il y a ' + formatAge(L.savedAt)));
+}
+
+function bilanBody() {
+  const B = loadBilan();
+  if (!B || !B.result) {
+    return h('div', null,
+      h('div', {class:'muted', style:{fontSize:'15px',lineHeight:'1.5',marginBottom:'16px'}}, 'Le bilan fait le point sur ton niveau, ta tendance et tes priorités. Uniquement à la demande.'),
+      h('button', {class:'btn btn-primary', onclick:function(){ analyzeWithComment('bilan'); }}, 'Faire un bilan'));
+  }
+  const d = B.result;
+  const objSet = hasObjective();
+  const verdicts = {
+    continuer: { label:'Objectif tenable', bg:'#2E6BFF', fg:'#FFFFFF' },
+    ameliorer: { label:'Tu peux viser plus', bg:'#7B2CFF', fg:'#FFFFFF' },
+    downgrade: { label:'Objectif à revoir', bg:'#FF2D87', fg:'#14121C' },
+  };
+  const v = verdicts[d.verdict];
+  const conf = (objSet && d.confidence !== undefined && d.confidence !== null) ? d.confidence : null;
+  const list = function(title, items, color) {
+    if (!items || !items.length) return null;
+    return h('div', null,
+      h('div', {class:'sec'}, h('div', {class:'eyebrow'}, title)),
+      h('div', {class:'card'}, items.map(function(t, i) {
+        return h('div', {style:{display:'flex',gap:'12px',marginTop: i ? '10px' : '0'}}, h('span', {class:'sq', style:{background:color}}), h('div', {style:{fontSize:'15px',lineHeight:'1.45'}}, t));
+      })));
+  };
+  return h('div', null,
+    h('div', {class:'eyebrow'}, 'Bilan · il y a ' + formatAge(B.savedAt)),
+    h('div', {class:'h1', style:{margin:'8px 0 12px'}}, d.niveau || 'Bilan'),
+    has(d.tendance) ? h('span', {class:'chip', style:{background:'var(--ink)',color:'#FFFFFF'}}, d.tendance) : null,
+    (objSet && v) ? h('div', {class:'card', style:{marginTop:'16px',background:v.bg,color:v.fg}},
+      h('div', {class:'d', style:{fontSize:'17px',fontWeight:'700',marginBottom:'6px'}}, v.label),
+      has(d.verdictDetail) ? h('div', {style:{fontSize:'14px',lineHeight:'1.5'}}, d.verdictDetail) : null) : null,
+    conf !== null ? h('div', {class:'card', style:{marginTop:'8px'}},
+      h('div', {style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'10px'}},
+        h('div', {class:'eyebrow'}, 'Indice de confiance'),
+        h('div', {class:'d', style:{fontSize:'20px',fontWeight:'800'}}, conf + ' %')),
+      h('div', {style:{height:'8px',background:'var(--soft)'}}, h('div', {style:{height:'100%',width:conf+'%',background:'var(--pink)'}}))) : null,
+    list('Acquis', d.acquis, 'var(--blue)'),
+    list('À travailler', d.atravailler, 'var(--pink)'),
+    list('Priorités 4 semaines', d.priorites, 'var(--violet)'),
+    h('button', {class:'btn', style:{marginTop:'16px'}, onclick:function(){ analyzeWithComment('bilan'); }}, 'Refaire un bilan'));
+}
+
+/* ============================================================
+   Onglet PROFIL : fiche coureur + réglages
+   ============================================================ */
+const ZONE_COLORS = ['#2E6BFF', '#5B6BFF', '#9B4DFF', '#D23FC8', '#FF2D87'];
+
+function renderProfil() {
+  const r = loadRunner();
+  const o = loadObjective();
+  const prefs = loadPrefs();
+  const sync = syncStatus();
+  const ok = r && r.vmaKmh;
+
+  let fiche;
+  if (!ok) {
+    fiche = h('div', {class:'card', style:{fontSize:'14px',lineHeight:'1.5',color:'var(--muted)'}}, 'Ta fiche se charge à la prochaine synchronisation avec le serveur.');
+  } else {
+    // Largeur des zones proportionnelle à leur plage de FC (EF depuis 100 bpm, VO2max jusqu'à la FC max)
+    const zs = r.zones || [];
+    const spans = zs.map(function(z) {
+      const lo = z.lo == null ? 100 : z.lo;
+      const hi = z.hi == null ? Math.max(lo + 5, (r.hrMax || lo + 10)) : z.hi + 1;
+      return Math.max(3, hi - lo);
+    });
+    fiche = h('div', null,
+      h('div', {class:'grid2'},
+        h('div', {class:'hero', style:{padding:'16px'}},
+          h('div', {class:'eyebrow'}, 'VMA'),
+          h('div', {class:'d', style:{fontSize:'28px',fontWeight:'800',marginTop:'8px'}}, r.vmaKmh),
+          h('div', {style:{fontSize:'13px',fontWeight:'600',marginTop:'2px'}}, 'km/h · ' + r.vmaPace + ' /km')),
+        h('div', {style:{background:'var(--pink)',color:'#14121C',padding:'16px'}},
+          h('div', {class:'eyebrow', style:{color:'#14121C'}}, 'FC max'),
+          h('div', {class:'d', style:{fontSize:'28px',fontWeight:'800',marginTop:'8px'}}, String(r.hrMax)),
+          h('div', {style:{fontSize:'13px',fontWeight:'600',marginTop:'2px'}}, 'bpm · ' + (r.hrMaxNote || '')))),
+      h('div', {class:'muted', style:{fontSize:'12px',marginTop:'8px'}}, 'Mis à jour le ' + (r.updated || '?')),
+
+      h('div', {class:'sec'}, h('div', {class:'eyebrow'}, 'Allures'), h('div', {class:'muted', style:{fontSize:'12px'}}, 'min/km')),
+      h('div', {class:'card', style:{padding:'4px 18px'}}, (r.paces || []).map(function(p) {
+        return h('div', {class:'row'}, h('span', {class:'k'}, p.name), h('span', {class:'v'}, p.pace));
+      })),
+
+      h('div', {class:'sec'}, h('div', {class:'eyebrow'}, 'Zones de FC'), h('div', {class:'muted', style:{fontSize:'12px'}}, 'bpm')),
+      h('div', {style:{display:'flex',height:'12px',marginBottom:'8px'}}, zs.map(function(z, i) {
+        return h('div', {style:{flex:String(spans[i]),background:ZONE_COLORS[i] || '#9B4DFF'}});
+      })),
+      h('div', {class:'card', style:{padding:'4px 18px'}}, zs.map(function(z, i) {
+        return h('div', {class:'row'},
+          h('span', {style:{display:'flex',alignItems:'center',gap:'12px'}}, h('span', {style:{width:'10px',height:'10px',background:ZONE_COLORS[i] || '#9B4DFF',flexShrink:'0'}}), h('span', {class:'k'}, z.name)),
+          h('span', {class:'v'}, z.range));
+      })),
+
+      h('div', {class:'sec'}, h('div', {class:'eyebrow'}, 'Profil')),
+      h('div', {class:'card'}, (r.profile || []).map(function(p, i) {
+        const c = ['var(--blue)', 'var(--pink-text)', 'var(--violet-dark)'][i] || 'var(--ink)';
+        return h('div', {style:{fontSize:'14px',lineHeight:'1.5',marginTop: i ? '8px' : '0'}}, h('b', {style:{color:c}}, p.label), ' · ' + p.text);
+      })),
+
+      h('button', {class:'link', style:{marginTop:'8px'}, 'aria-expanded': state.more ? 'true' : 'false', onclick:function(){ setState({ more: !state.more }); }},
+        h('span', null, 'Tests et références'), h('span', {class:'s', style:{display:'flex',alignItems:'center',gap:'6px'}}, String((r.tests || []).length), icon(state.more ? 'up' : 'down', 18))),
+      state.more ? h('div', {class:'card', style:{marginTop:'2px'}}, (r.tests || []).map(function(t, i) {
+        return h('div', {style:{display:'flex',gap:'12px',marginTop: i ? '10px' : '0'}}, h('span', {class:'sq', style:{background:'var(--violet)'}}), h('div', {style:{fontSize:'14px',lineHeight:'1.45'}}, t));
+      })) : null);
+  }
+
+  const syncTxt = sync === 'ok' ? 'serveur relié' : sync === null ? 'non relié' : 'à vérifier';
+  return h('div', {class:'screen fade'},
+    h('div', {class:'h1', style:{marginBottom:'18px'}}, 'Ma fiche'),
+    fiche,
+    h('div', {class:'sec'}, h('div', {class:'eyebrow'}, 'Réglages')),
+    h('button', {class:'link', onclick:function(){ setState({ view:'objective' }); }},
+      h('span', null, 'Objectif'), h('span', {class:'s', style:{display:'flex',alignItems:'center',gap:'6px'}}, o ? [o.name, timeLabel(o.targetTime)].filter(Boolean).join(' · ') || 'Défini' : 'Aucun', icon('chev', 18))),
+    h('button', {class:'link', onclick:function(){ setState({ view:'prefs' }); }},
+      h('span', null, 'Disponibilités'), h('span', {class:'s', style:{display:'flex',alignItems:'center',gap:'6px'}}, 'jusqu\'à ' + prefs.sessions + ' séances', icon('chev', 18))),
+    h('button', {class:'link', onclick:function(){ openStatus(); }},
+      h('span', null, 'État du coach'), h('span', {class:'s', style:{display:'flex',alignItems:'center',gap:'6px'}}, syncTxt, icon('chev', 18))),
+    h('button', {class:'link', style:{color:'var(--pink-text)'}, onclick:function(){ showDisconnectConfirm(); }}, h('span', null, 'Déconnecter Strava')),
+    h('div', {class:'muted', style:{fontSize:'12px',textAlign:'center',lineHeight:'1.5',marginTop:'16px'}}, 'Fiche modifiable dans api/_lib/runner.js sur GitHub.'));
+}
+
+/* ============================================================
+   Objectif (ajout / modification / suppression)
+   ============================================================ */
+function renderObjective() {
+  const existing = loadObjective();
+  const draft = {
+    name: existing ? (existing.name || '') : '',
+    date: existing ? (existing.date || null) : null,
+    distanceKm: existing ? (existing.distanceKm || null) : null,
+    dplus: existing ? (existing.dplus || null) : null,
+    targetTime: existing ? (existing.targetTime || null) : null,
+  };
+  const field = function(label, input, id) {
+    input.id = id;
+    return h('div', {style:{marginTop:'14px'}}, h('label', {class:'obj-label', for:id, style:{display:'block'}}, label), input);
+  };
+  const nameIn = h('input', {class:'obj-input', type:'text', placeholder:'Ex : Marathon de Rome'});
+  nameIn.value = draft.name; nameIn.oninput = function(){ draft.name = nameIn.value; };
+  const dateIn = h('input', {class:'obj-input', type:'date'});
+  dateIn.value = draft.date || ''; dateIn.oninput = function(){ draft.date = dateIn.value || null; };
+  const distIn = h('input', {class:'obj-input', type:'number', inputmode:'decimal', min:'0', step:'0.1', placeholder:'42,2'});
+  distIn.value = draft.distanceKm != null ? draft.distanceKm : ''; distIn.oninput = function(){ const v = parseFloat(distIn.value); draft.distanceKm = v > 0 ? v : null; };
+  const dplusIn = h('input', {class:'obj-input', type:'number', inputmode:'numeric', min:'0', step:'50', placeholder:'0'});
+  dplusIn.value = draft.dplus != null ? draft.dplus : ''; dplusIn.oninput = function(){ const v = parseInt(dplusIn.value, 10); draft.dplus = v > 0 ? v : null; };
+  const cur = draft.targetTime || 0;
+  const hIn = h('input', {class:'obj-input', type:'number', inputmode:'numeric', min:'0', max:'23', placeholder:'h', 'aria-label':'Heures', style:{textAlign:'center'}});
+  const mIn = h('input', {class:'obj-input', type:'number', inputmode:'numeric', min:'0', max:'59', placeholder:'min', 'aria-label':'Minutes', style:{textAlign:'center'}});
+  hIn.value = cur ? String(Math.floor(cur / 60)) : ''; mIn.value = cur ? String(cur % 60) : '';
+  const syncTime = function() { const t = (parseInt(hIn.value, 10) || 0) * 60 + (parseInt(mIn.value, 10) || 0); draft.targetTime = t > 0 ? t : null; };
+  hIn.oninput = syncTime; mIn.oninput = syncTime;
+  const err = h('div', {style:{fontSize:'13px',color:'var(--pink-text)',textAlign:'center',minHeight:'18px',margin:'12px 0 6px'}});
+
+  return h('div', {class:'screen fade'},
+    backBar('Profil', 'profil'),
+    h('div', {class:'h1', style:{marginBottom:'6px'}}, existing ? 'Mon objectif' : 'Nouvel objectif'),
+    h('div', {class:'muted', style:{fontSize:'14px',lineHeight:'1.5'}}, 'Compte à rebours, phases et indice de confiance en dépendent.'),
+    h('div', {class:'card', style:{marginTop:'16px',paddingTop:'4px'}},
+      field('Nom de la course', nameIn, 'o-name'),
+      field('Date', dateIn, 'o-date'),
+      h('div', {class:'grid2'}, field('Distance (km)', distIn, 'o-dist'), field('D+ (m)', dplusIn, 'o-dplus')),
+      h('div', {style:{marginTop:'14px'}},
+        h('div', {class:'obj-label'}, 'Temps visé (indicatif)'),
+        h('div', {style:{display:'flex',gap:'8px',alignItems:'center'}}, hIn, h('span', {class:'muted'}, 'h'), mIn, h('span', {class:'muted'}, 'min')))),
+    err,
+    h('button', {class:'btn btn-primary', onclick:function() {
+      if (!draft.name.trim() && !draft.date && !draft.distanceKm && !draft.dplus && !draft.targetTime) { err.textContent = 'Renseigne au moins un nom ou une date.'; return; }
+      saveObjective({ name: draft.name.trim(), date: draft.date || null, distanceKm: draft.distanceKm, dplus: draft.dplus, targetTime: draft.targetTime });
+      pushSettings();
+      invalidateObjectiveCaches();
+      setState({ view:'home' });
+    }}, existing ? 'Enregistrer' : 'Créer l\'objectif'),
+    existing ? h('button', {class:'btn btn-danger', style:{marginTop:'8px'}, onclick:function() {
+      showConfirm({ title:'Supprimer l\'objectif ?', sub:'Retour en entraînement libre : plus de compte à rebours ni d\'indice de confiance.', okLabel:'Supprimer', onConfirm:function() {
+        clearObjective(); pushSettings(); invalidateObjectiveCaches(); setState({ view:'home' });
+      }});
+    }}, 'Supprimer l\'objectif') : null,
+    h('div', {class:'muted', style:{fontSize:'12px',textAlign:'center',lineHeight:'1.5',marginTop:'14px'}}, 'Modifier l\'objectif efface la séance et le bilan en cache.'));
+}
+
+/* ============================================================
+   Disponibilités (séances max + jours)
+   ============================================================ */
+function renderPrefs() {
+  if (!state.prefsDraft) { const p = loadPrefs(); state.prefsDraft = { sessions: p.sessions, days: p.days.slice() }; }
+  const draft = state.prefsDraft;
+  const LABELS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
+  const dayNames = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"];
+  const sel = draft.days.slice().sort(function(a,b){ return a-b; }).map(function(d){ return dayNames[d]; });
+  return h('div', {class:'screen fade'},
+    backBar('Profil', 'profil', { prefsDraft:null, prefsSaved:false }),
+    h('div', {class:'h1', style:{marginBottom:'6px'}}, 'Disponibilités'),
+    h('div', {class:'muted', style:{fontSize:'14px',lineHeight:'1.5'}}, 'Un maximum, pas une cible : le coach peut proposer moins.'),
+    h('div', {class:'sec'}, h('div', {class:'eyebrow'}, 'Séances max par semaine')),
+    h('div', {class:'grid3'}, [3, 4, 5].map(function(n) {
+      return h('button', {class:'pick' + (draft.sessions === n ? ' on' : ''), 'aria-pressed': draft.sessions === n ? 'true' : 'false', onclick:function(){ draft.sessions = n; state.prefsSaved = false; render(); }}, String(n));
+    })),
+    h('div', {class:'sec'}, h('div', {class:'eyebrow'}, 'Jours disponibles')),
+    h('div', {style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'4px'}}, LABELS.map(function(l, i) {
+      const on = draft.days.indexOf(i) >= 0;
+      return h('button', {class:'pick' + (on ? ' on' : ''), style:{fontSize:'12px'}, 'aria-pressed': on ? 'true' : 'false', onclick:function(){
+        const k = draft.days.indexOf(i); if (k >= 0) draft.days.splice(k, 1); else draft.days.push(i); state.prefsSaved = false; render();
+      }}, l);
+    })),
+    h('div', {class:'muted', style:{fontSize:'13px',textAlign:'center',margin:'16px 0'}}, 'Jusqu\'à ' + draft.sessions + ' séances · ' + (sel.length ? sel.join(', ') : 'aucun jour')),
+    h('button', {class:'btn btn-primary', onclick:function(){
+      savePrefsData({ sessions: draft.sessions, days: draft.days.slice() });
+      pushSettings();
+      setState({ prefsSaved:true });
+    }}, state.prefsSaved ? 'Enregistré' : 'Enregistrer'));
+}
+
+/* ============================================================
+   Autres écrans
+   ============================================================ */
+function renderLogin() {
+  return h('div', {class:'screen fade', style:{paddingTop:'90px'}},
+    h('div', {class:'d', style:{fontSize:'44px',fontWeight:'800',lineHeight:'1'}}, 'Coach'),
+    h('div', {style:{width:'64px',height:'8px',background:'var(--pink)',margin:'18px 0 22px'}}),
+    h('div', {class:'muted', style:{fontSize:'16px',lineHeight:'1.5',marginBottom:'36px'}}, 'Des séances construites sur tes vraies données Strava.'),
+    h('button', {class:'btn', onclick:connectStrava, style:{background:'#FC4C02',border:'0',color:'#FFFFFF',fontWeight:'700',fontSize:'16px',minHeight:'56px'}}, 'Connecter Strava'));
+}
+
+function renderLoading() {
+  return h('div', {style:{display:'flex',flexDirection:'column',alignItems:'center',gap:'18px',padding:'120px 20px'}},
+    h('div', {style:{width:'40px',height:'40px',border:'5px solid var(--soft)',borderTopColor:'var(--pink)',animation:'spin 0.8s linear infinite'}}),
+    h('div', {class:'d', style:{fontSize:'16px',fontWeight:'700'}}, 'Analyse en cours'),
+    h('div', {class:'muted', style:{fontSize:'14px',textAlign:'center',lineHeight:'1.5'}}, 'Lecture de Strava puis du coach.'));
+}
+
+function renderError() {
+  return h('div', {class:'screen fade'},
+    h('div', {class:'h1', style:{marginBottom:'12px'}}, 'Erreur'),
+    h('div', {class:'card', style:{fontSize:'14px',lineHeight:'1.5',wordBreak:'break-word'}}, state.error),
+    state.lastAction ? h('button', {class:'btn btn-primary', style:{marginTop:'16px'}, onclick:function(){ analyze(state.lastAction.mode, state.lastAction.extra, state.lastAction.comment); }}, 'Réessayer') : null,
+    h('button', {class:'btn', style:{marginTop:'8px'}, onclick:function(){ setState({ view:'home', error:null }); }}, 'Retour'));
+}
+
+function renderCross() {
+  const pick = function(label, val) {
+    return h('button', {class:'btn', style:{minHeight:'64px',fontSize:'15px',fontWeight:'700'}, onclick:function(){ showCommentDialog(function(c){ analyze('cross', val, c); }); }}, label);
+  };
+  return h('div', {class:'screen fade'},
+    backBar('Séance', 'home'),
+    h('div', {class:'h1', style:{marginBottom:'6px'}}, 'Autre sport'),
+    h('div', {class:'muted', style:{fontSize:'14px',lineHeight:'1.5',marginBottom:'18px'}}, 'Compté dans ta charge, ta prochaine course s\'adapte.'),
+    h('div', {class:'grid2'}, pick('Vélo', 'Velo'), pick('Natation', 'Natation'), pick('Rando', 'Rando'), pick('Autre', 'Autre')));
 }
 
 /* ---------------- Notifications push ---------------- */
@@ -1353,7 +1347,6 @@ function b64ToU8(b64) {
   for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
   return out;
 }
-// État des notifications sur cet appareil
 async function loadPushInfo() {
   if (!pushSupported()) return { supported:false };
   const info = { supported:true, permission: Notification.permission, subscribed:false, devices:0 };
@@ -1381,7 +1374,7 @@ async function enablePush() {
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey: b64ToU8(d.publicKey) });
     const r2 = await fetch('/api/push', { method:'POST', headers: appHeaders(), body: JSON.stringify({ subscription: sub.toJSON() }) });
     if (!r2.ok) throw new Error('Enregistrement refusé par le serveur');
-    setState({ pushInfo: await loadPushInfo(), pushMsg: 'Notifications activées ✓' });
+    setState({ pushInfo: await loadPushInfo(), pushMsg: 'Notifications activées.' });
   } catch(e) { setState({ pushInfo: await loadPushInfo(), pushMsg: e.message }); }
 }
 async function testPush() {
@@ -1430,313 +1423,77 @@ function renderStatus() {
   const st = loadStatus() || {};
   const key = !!getAppKey();
   const sync = syncStatus();
-  const lineEl = function(label, value, color) {
-    return h('div', {style:{display:'flex',justifyContent:'space-between',gap:'12px',padding:'9px 0',borderBottom:'1px solid #1a2035'}},
-      h('div', {style:{fontSize:'12px',color:'#a3afc2'}}, label),
-      h('div', {style:{fontSize:'12px',color:color || '#e2e8f0',fontWeight:'700',textAlign:'right'}}, value));
+  const GOOD = 'var(--blue)', BAD = 'var(--pink-text)', WAIT = 'var(--violet-dark)';
+  const line = function(label, value, color) {
+    return h('div', {class:'row'}, h('span', {class:'k'}, label), h('span', {class:'v', style:{color: color || 'var(--ink)'}}, value));
   };
   const hook = state.hook;
-  const hookTxt = !key ? 'serveur non relié' : state.hookError ? 'erreur' : hook == null ? 'vérification…' : hook.active ? 'active ✓' : 'inactive';
-  const hookColor = hook && hook.active ? '#34d399' : state.hookError ? '#f87171' : '#fbbf24';
+  const hookTxt = !key ? 'serveur non relié' : state.hookError ? 'erreur' : hook == null ? 'vérification…' : hook.active ? 'active' : 'inactive';
+  const hookColor = hook && hook.active ? GOOD : state.hookError ? BAD : WAIT;
   const lp = st.lastPipeline;
   const pi = state.pushInfo;
   const pushTxt = !key ? 'serveur non relié'
     : !pushSupported() ? (isStandalone() ? 'non prises en charge' : 'ouvre l\'app depuis l\'écran d\'accueil')
     : pi == null ? 'vérification…'
     : pi.permission === 'denied' ? 'bloquées (Réglages iOS)'
-    : pi.subscribed ? 'actives ✓'
-    : 'inactives';
-  const pushColor = pi && pi.subscribed ? '#34d399' : (pi && pi.permission === 'denied') ? '#f87171' : '#fbbf24';
-  const back = h('div', {style:{display:'flex',alignItems:'center',gap:'12px',marginBottom:'16px'}},
-    h('button', {onclick:function(){ setState({view:'home'}); }, style:{background:'none',border:'none',color:'#7c3aed',fontSize:'22px',cursor:'pointer',padding:'0',lineHeight:'1'}}, '←'),
-    h('div', {style:{fontSize:'16px',fontWeight:'800',color:'#e2e8f0'}}, '🩺 État du coach'));
+    : pi.subscribed ? 'actives' : 'inactives';
+  const pushColor = pi && pi.subscribed ? GOOD : (pi && pi.permission === 'denied') ? BAD : WAIT;
+  const msg = function(t, color) { return h('div', {class:'card', style:{marginTop:'8px',fontSize:'14px',lineHeight:'1.5',wordBreak:'break-word',color: color || 'var(--ink)'}}, t); };
 
-  return h('div', {class:'fade',style:{padding:'20px 18px'}},
-    back,
-    h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'6px 16px 2px',marginBottom:'10px'}},
-      lineEl('Version de l\'app', 'v' + APP_VERSION),
-      lineEl('Serveur', sync === 'ok' ? 'relié ✓' : sync === null ? 'non relié' : sync === 'err' ? 'injoignable' : 'indisponible', sync === 'ok' ? '#34d399' : '#f87171'),
-      lineEl('Détection auto (Strava)', hookTxt, hookColor),
-      lineEl('Dernière activité reçue', st.lastEvent ? fmtDateTime(st.lastEvent.at) : 'aucune'),
-      lineEl('Dernière analyse', lp ? fmtDateTime(lp.at) + (lp.source === 'webhook' ? ' (auto)' : ' (manuelle)') : 'aucune'),
-      lineEl('Résultat', lp ? (lp.ok ? 'OK ✓' + (lp.durationS ? ' · ' + lp.durationS + ' s' : '') : 'échec') : '-', lp ? (lp.ok ? '#34d399' : '#f87171') : null),
-      lineEl('Notifications', pushTxt, pushColor)),
-    (lp && !lp.ok && lp.error) ? h('div', {style:{background:'#1a0a0a',border:'1px solid #3a1515',borderRadius:'12px',padding:'12px 14px',marginBottom:'10px',fontSize:'12px',color:'#fca5a5',lineHeight:'1.5',wordBreak:'break-word'}}, 'Dernière erreur : ' + lp.error) : null,
-    state.hookError ? h('div', {style:{background:'#1a0a0a',border:'1px solid #3a1515',borderRadius:'12px',padding:'12px 14px',marginBottom:'10px',fontSize:'12px',color:'#fca5a5',lineHeight:'1.5',wordBreak:'break-word'}}, state.hookError) : null,
-    state.pushMsg ? h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'12px',padding:'12px 14px',marginBottom:'10px',fontSize:'12px',color:'#c4cdd8',lineHeight:'1.5'}}, state.pushMsg) : null,
-    (key && pi && pi.supported && !pi.subscribed && pi.permission !== 'denied') ? h('button', {onclick:function(){ enablePush(); }, style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#7c3aed',color:'#fff',fontSize:'14px',fontWeight:'700',marginBottom:'10px'}}, '🔔 Activer les notifications') : null,
-    (key && pi && pi.subscribed) ? h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'10px'}},
-      h('button', {onclick:function(){ testPush(); }, style:{padding:'13px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#e2e8f0',fontSize:'12px',fontWeight:'700'}}, '🔔 Tester'),
-      h('button', {onclick:function(){ disablePush(); }, style:{padding:'13px',borderRadius:'12px',background:'transparent',border:'1px solid #3a1515',color:'#f87171',fontSize:'12px',fontWeight:'700'}}, 'Désactiver')) : null,
-    (key && hook && !hook.active) ? h('button', {onclick:function(){ setHook('POST'); }, style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#7c3aed',color:'#fff',fontSize:'14px',fontWeight:'700',marginBottom:'10px'}}, '⚡ Activer la détection automatique') : null,
-    (key && hook && hook.active) ? h('div', {style:{fontSize:'11px',color:'#7a889f',lineHeight:'1.5',marginBottom:'10px',wordBreak:'break-all'}}, 'Strava prévient : ' + (hook.callbackUrl || '')) : null,
-    (key && hook && hook.active) ? h('button', {onclick:function(){ showConfirm({ icon:'⏸', title:'Désactiver la détection ?', sub:'Strava ne préviendra plus l\'app. Tu pourras la réactiver ici.', okLabel:'Désactiver', onConfirm:function(){ setHook('DELETE'); } }); }, style:{width:'100%',padding:'13px',borderRadius:'12px',background:'transparent',border:'1px solid #3a1515',color:'#f87171',fontSize:'12px',fontWeight:'700',marginBottom:'10px'}}, 'Désactiver la détection automatique') : null,
-    h('button', {onclick:function(){ openStatus(); }, style:{width:'100%',padding:'13px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#e2e8f0',fontSize:'13px',fontWeight:'600',marginBottom:'10px'}}, '↻ Rafraîchir'),
-    h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'transparent',border:'1px solid #1a2035',color:'#a3afc2',fontSize:'13px',fontWeight:'600'}}, '← Retour'));
+  return h('div', {class:'screen fade'},
+    backBar('Profil', 'profil'),
+    h('div', {class:'h1', style:{marginBottom:'16px'}}, 'État du coach'),
+    h('div', {class:'card', style:{padding:'4px 18px'}},
+      line('Version de l\'app', 'v' + APP_VERSION),
+      line('Serveur', sync === 'ok' ? 'relié' : sync === null ? 'non relié' : sync === 'err' ? 'injoignable' : 'indisponible', sync === 'ok' ? GOOD : BAD),
+      line('Détection auto', hookTxt, hookColor),
+      line('Dernière activité reçue', st.lastEvent ? fmtDateTime(st.lastEvent.at) : 'aucune'),
+      line('Dernière analyse', lp ? fmtDateTime(lp.at) + (lp.source === 'webhook' ? ' (auto)' : ' (manuelle)') : 'aucune'),
+      line('Résultat', lp ? (lp.ok ? 'OK' + (lp.durationS ? ' · ' + lp.durationS + ' s' : '') : 'échec') : '-', lp ? (lp.ok ? GOOD : BAD) : null),
+      line('Notifications', pushTxt, pushColor)),
+    (lp && !lp.ok && lp.error) ? msg('Dernière erreur : ' + lp.error, BAD) : null,
+    state.hookError ? msg(state.hookError, BAD) : null,
+    state.pushMsg ? msg(state.pushMsg) : null,
+    (key && pi && pi.supported && !pi.subscribed && pi.permission !== 'denied') ? h('button', {class:'btn btn-primary', style:{marginTop:'12px'}, onclick:function(){ enablePush(); }}, 'Activer les notifications') : null,
+    (key && pi && pi.subscribed) ? h('div', {class:'grid2', style:{marginTop:'12px'}},
+      h('button', {class:'btn', onclick:function(){ testPush(); }}, 'Tester'),
+      h('button', {class:'btn btn-danger', onclick:function(){ disablePush(); }}, 'Désactiver')) : null,
+    (key && hook && !hook.active) ? h('button', {class:'btn btn-primary', style:{marginTop:'8px'}, onclick:function(){ setHook('POST'); }}, 'Activer la détection automatique') : null,
+    (key && hook && hook.active) ? h('div', {class:'muted', style:{fontSize:'12px',lineHeight:'1.5',marginTop:'12px',wordBreak:'break-all'}}, 'Strava prévient : ' + (hook.callbackUrl || '')) : null,
+    (key && hook && hook.active) ? h('button', {class:'btn btn-danger', style:{marginTop:'8px'}, onclick:function(){ showConfirm({ title:'Désactiver la détection ?', sub:'Strava ne préviendra plus l\'app. Tu pourras la réactiver ici.', okLabel:'Désactiver', onConfirm:function(){ setHook('DELETE'); } }); }}, 'Désactiver la détection automatique') : null,
+    h('button', {class:'btn', style:{marginTop:'8px'}, onclick:function(){ openStatus(); }}, 'Rafraîchir'));
 }
 
-/* ---------------- Fiche coureur (lecture seule) ---------------- */
-function renderRunner() {
-  const r = loadRunner();
-  const back = h('div', {style:{display:'flex',alignItems:'center',gap:'12px',marginBottom:'16px'}},
-    h('button', {onclick:function(){ setState({view:'home'}); }, style:{background:'none',border:'none',color:'#7c3aed',fontSize:'22px',cursor:'pointer',padding:'0',lineHeight:'1'}}, '←'),
-    h('div', {style:{fontSize:'16px',fontWeight:'800',color:'#e2e8f0'}}, '📋 Ma fiche coureur'));
-
-  if (!r) {
-    return h('div', {class:'fade',style:{padding:'20px 18px'}}, back,
-      h('div', {style:{background:'#0e1118',border:'1px solid #1a2035',borderRadius:'14px',padding:'18px',fontSize:'13px',color:'#a3afc2',lineHeight:'1.6'}},
-        'Ta fiche se charge à la prochaine analyse. Lance « Ma prochaine séance », puis reviens ici.'));
-  }
-
-  const zoneColors = ['#60a5fa','#22d3ee','#a3e635','#fbbf24','#f87171'];
-  const title = function(t) {
-    return h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'10px',fontWeight:'700'}}, t);
-  };
-  const card = function() {
-    return h.apply(null, ['div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}}].concat(Array.prototype.slice.call(arguments)));
-  };
-  // "Seuil (SV2) : 4'40"-4'50"/km, FC 158-162" → libellé + valeur
-  const splitLine = function(line) {
-    const i = line.indexOf(' : ');
-    return i > 0 ? [line.slice(0, i), line.slice(i + 3)] : [line, ''];
-  };
-  const bullets = function(items, color) {
-    return (items || []).map(function(t) {
-      return h('div', {style:{display:'flex',gap:'8px',alignItems:'flex-start',marginBottom:'7px'}},
-        h('div', {style:{width:'5px',height:'5px',borderRadius:'50%',background:color,flexShrink:'0',marginTop:'6px'}}),
-        h('div', {style:{fontSize:'12px',color:'#c4cdd8',lineHeight:'1.5'}}, t));
-    });
-  };
-
-  return h('div', {class:'fade',style:{padding:'20px 18px'}},
-    back,
-    h('div', {style:{background:'linear-gradient(135deg,#1a0f35,#0d1a35)',borderRadius:'16px',padding:'18px',marginBottom:'10px',border:'1px solid #2a1f4a'}},
-      h('div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}},
-        h('div', null,
-          h('div', {style:{fontSize:'10px',color:'#a3afc2',fontWeight:'700',marginBottom:'4px'}}, 'VMA'),
-          h('div', {style:{fontSize:'26px',fontWeight:'900',color:'#fff',letterSpacing:'-0.5px',lineHeight:'1'}}, r.vma || '-'),
-          h('div', {style:{fontSize:'11px',color:'#c4b5fd',marginTop:'4px'}}, r.vmaPace || '')),
-        h('div', null,
-          h('div', {style:{fontSize:'10px',color:'#a3afc2',fontWeight:'700',marginBottom:'4px'}}, 'FC max'),
-          h('div', {style:{fontSize:'26px',fontWeight:'900',color:'#fff',letterSpacing:'-0.5px',lineHeight:'1'}}, String(r.hrMax || '-').split(' ')[0]),
-          h('div', {style:{fontSize:'11px',color:'#c4b5fd',marginTop:'4px',lineHeight:'1.3'}}, String(r.hrMax || '').split(' ').slice(1).join(' ')))),
-      h('div', {style:{fontSize:'10px',color:'#8b9ab3',marginTop:'12px'}}, 'Mise à jour le ' + (r.updated || '?'))),
-
-    card(title('Allures de référence'),
-      (r.paces || []).map(function(line, i, arr) {
-        const parts = splitLine(line);
-        return h('div', {style:{display:'flex',justifyContent:'space-between',gap:'12px',padding:'8px 0',borderBottom: i < arr.length - 1 ? '1px solid #1a2035' : 'none'}},
-          h('div', {style:{fontSize:'12px',color:'#a3afc2',flexShrink:'0',maxWidth:'45%'}}, parts[0]),
-          h('div', {style:{fontSize:'12px',color:'#e2e8f0',fontWeight:'700',textAlign:'right'}}, parts[1]));
-      })),
-
-    card(title('Zones de FC'),
-      (r.zones || []).map(function(z, i) {
-        const c = zoneColors[i] || '#a78bfa';
-        return h('div', {style:{display:'flex',alignItems:'center',gap:'10px',marginBottom:'8px'}},
-          h('div', {style:{width:'4px',height:'22px',borderRadius:'2px',background:c,flexShrink:'0'}}),
-          h('div', {style:{flex:'1',fontSize:'12px',color:'#c4cdd8'}}, z.name),
-          h('div', {style:{fontSize:'12px',color:c,fontWeight:'800'}}, z.range + ' bpm'));
-      })),
-
-    card(title('Tests et références'), bullets(r.tests, '#60a5fa')),
-    card(title('Profil'), bullets(r.profile, '#a78bfa')),
-
-    h('div', {style:{fontSize:'11px',color:'#7a889f',textAlign:'center',lineHeight:'1.5',margin:'6px 0 14px'}},
-      'Pour modifier ces valeurs : bloc RUNNER du fichier api/analyze.js sur GitHub. La fiche se met à jour à la prochaine analyse.'),
-    h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#a3afc2',fontSize:'13px',fontWeight:'600'}}, '← Retour'));
-}
-
-// Couleur d'un bloc du déroulé : échauffement bleu, retour au calme vert, corps de séance couleur du type
-function phaseColor(phase, mainColor) {
-  const p = (phase || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  if (p.indexOf('chauff') >= 0) return '#60a5fa';
-  if (p.indexOf('calme') >= 0) return '#34d399';
-  return mainColor;
-}
-
-function renderResult() {
-  const cached2 = loadCache();
-  const d = state.result || (cached2 ? cached2.result : null);
-  if (!d) return renderHome();
-  const cache = loadCache();
-  const o = loadObjective();
-
-  const has = function(v){ return v && String(v).trim() && String(v).trim() !== '-'; };
-  const typeRun = normalizeRun(d.type || '');
-  const mainColor = typeRun ? typeRun.color : '#a78bfa';
-
-  const stat = function(label,value,color) {
-    return h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'13px 12px',borderBottom:'2px solid '+color+'35'}},
-      h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, label),
-      h('div', {style:{fontSize:'16px',fontWeight:'800',color:color,lineHeight:'1'}}, value));
-  };
-
-  const row = function(icon,label,val) {
-    return h('div', {style:{display:'flex',gap:'10px',marginBottom:'10px',alignItems:'flex-start'}},
-      h('span', {style:{fontSize:'14px',flexShrink:'0',marginTop:'1px'}}, icon),
-      h('div', null,
-        h('span', {style:{fontSize:'8px',color:'#8b9ab3',fontWeight:'700',textTransform:'uppercase',letterSpacing:'1px'}}, label+' · '),
-        h('span', {style:{fontSize:'12px',color:'#a3afc2',lineHeight:'1.5'}}, val)));
-  };
-
-  const chip = function(text, color) {
-    return h('span', {style:{display:'inline-block',fontSize:'11px',fontWeight:'700',color:color,background:color+'18',border:'1px solid '+color+'30',borderRadius:'6px',padding:'3px 8px',marginRight:'6px',marginTop:'2px'}}, text);
-  };
-
-  const statDefs = [];
-  statDefs.push(['Distance', d.distance, '#a78bfa']);
-  if (has(d.dplus)) statDefs.push(['D+', d.dplus, '#34d399']);
-  if (has(d.duration)) statDefs.push(['Durée', d.duration, '#818cf8']);
-  if (has(d.pace)) statDefs.push(['Allure', d.pace, '#60a5fa']);
-  statDefs.push(['FC cible', d.hr, '#f87171']);
-  statDefs.push(['RPE', d.rpe, '#fbbf24']);
-  const statCells = statDefs.map(function(s){ return stat(s[0], s[1], s[2]); });
-
-  // Déroulé de la séance (blocs ordonnés)
-  const blocks = Array.isArray(d.structure) ? d.structure.filter(function(b){ return b && (has(b.detail) || has(b.phase)); }) : [];
-  const structureCard = blocks.length ? h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
-    h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'12px',fontWeight:'700'}}, 'Déroulé'),
-    blocks.map(function(b, i) {
-      const c = phaseColor(b.phase, mainColor);
-      const isLast = i === blocks.length - 1;
-      return h('div', {style:{display:'flex',gap:'12px',marginBottom: isLast ? '0' : '14px'}},
-        h('div', {style:{width:'3px',borderRadius:'2px',background:c,flexShrink:'0'}}),
-        h('div', {style:{flex:'1'}},
-          has(b.phase) ? h('div', {style:{fontSize:'11px',color:c,fontWeight:'800',marginBottom:'4px'}}, b.phase) : null,
-          has(b.detail) ? h('div', {style:{fontSize:'13px',color:'#e2e8f0',lineHeight:'1.5',marginBottom:(has(b.pace)||has(b.hr))?'6px':'0'}}, b.detail) : null,
-          (has(b.pace) || has(b.hr)) ? h('div', null,
-            has(b.pace) ? chip(b.pace, '#60a5fa') : null,
-            has(b.hr) ? chip('FC ' + String(b.hr).replace(/^FC\s*/i, ''), '#f87171') : null) : null));
-    })) : null;
-
-  const children = [
-    cache ? h('div', {style:{fontSize:'10px',color:'#7a889f',marginBottom:'10px',textAlign:'right'}}, 'En cache · il y a ' + formatAge(cache.savedAt)) : null,
-    h('div', {style:{background:'linear-gradient(135deg,#1a0f35,#0d1a35)',borderRadius:'16px',padding:'20px 18px',marginBottom:'10px',border:'1px solid #2a1f4a'}},
-      h('div', {style:{fontSize:'9px',color:'#a3afc2',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'5px',fontWeight:'700'}}, d.nextDay ? 'Seance recommandee · ' + d.nextDay : 'Seance recommandee'),
-      h('div', {style:{fontSize:'24px',fontWeight:'900',color:'#fff',letterSpacing:'-0.5px',marginBottom:'3px'}}, d.headline),
-      h('div', {style:{fontSize:'13px',color:'#a3afc2'}}, d.type + (has(d.zone) ? ' · ' + d.zone : ''))),
-    has(d.goal) ? h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px',borderLeft:'3px solid '+mainColor}},
-      h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, 'Objectif de la séance'),
-      h('div', {style:{fontSize:'13px',color:'#e2e8f0',lineHeight:'1.5'}}, d.goal)) : null,
-    h.apply(null, ['div', {style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'10px'}}].concat(statCells)),
-    structureCard,
-    has(d.success) ? h('div', {style:{background:'#032118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px',border:'1px solid #34d39930'}},
-      h('div', {style:{fontSize:'10px',color:'#34d399',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, '✓ Séance réussie si'),
-      h('div', {style:{fontSize:'13px',color:'#d1fae5',lineHeight:'1.5'}}, d.success)) : null,
-    has(d.tip) ? h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px',borderLeft:'3px solid #fbbf24'}},
-      h('div', {style:{fontSize:'8px',color:'#78520a',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, 'Conseil cle'),
-      h('div', {style:{fontSize:'13px',color:'#fbbf24',lineHeight:'1.5'}}, d.tip)) : null,
-    h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
-      row('🍌','Avant',d.before), row('💧','Pendant',d.during),
-      row('🥛','Apres',d.after), row('👟','Equipement',d.gear))
-  ];
-
-  if (d.week) {
-    const weekCards = d.week.map(function(w) {
-      const isRun = !!normalizeRun(w.session);
-      const selected = state.weekDetail === w.day;
-      const wc = w.color || '#374151';
-      return h('div', {onclick: isRun ? function() { toggleWeekDetail(w.day); } : null, style:{opacity: w.done && !selected ? '0.5' : '1',cursor: isRun ? 'pointer' : 'default'}},
-        h('div', {style:{fontSize:'8px',color:'#8b9ab3',marginBottom:'5px',textTransform:'uppercase',textAlign:'center',fontWeight:'600'}}, w.day + (w.done ? ' ✓' : '')),
-        h('div', {style:{borderRadius:'7px',padding:'6px 2px',background:wc+(selected?'35':'18'),border:(selected?'2px solid '+wc:'1px solid '+wc+'30'),fontSize:'9px',color:w.color||'#374151',fontWeight:'700',minHeight:'40px',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:'1.2',textAlign:'center'}}, w.session));
-    });
-    children.push(h.apply(null, ['div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
-      h('div', {style:{fontSize:'11px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'2px',marginBottom: has(d.weekLogic) ? '6px' : '12px',fontWeight:'700'}}, planWeekTitle('Bloc semaine')),
-      has(d.weekLogic) ? h('div', {style:{fontSize:'12px',color:'#c4b5fd',lineHeight:'1.5',marginBottom:'12px'}}, d.weekLogic) : null,
-      h.apply(null, ['div', {style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'5px'}}].concat(weekCards)),
-      weekDetailPanel(d.week)
-    ]));
-  }
-
-  children.push(
-    h('div', {style:{background:'#080b10',borderRadius:'12px',padding:'14px 16px',marginBottom:'16px',border:'1px dashed #334155'}},
-      h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'5px',fontWeight:'700'}}, 'Pourquoi'),
-      h('div', {style:{fontSize:'12px',color:'#a3afc2',lineHeight:'1.6'}}, d.why)),
-    h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#a3afc2',fontSize:'13px',fontWeight:'600'}}, '← Retour')
-  );
-
-  return h.apply(null, ['div', {class:'fade',style:{padding:'20px 18px'}}].concat(children));
-}
-
-function renderBilan() {
-  const cached3 = loadBilan();
-  const d = cached3 ? cached3.result : null;
-  if (!d) return renderHome();
-  const objSet = hasObjective();
-
-  const verdictConfig = {
-    continuer: { label: 'Objectif tenable',   color: '#34d399', bg: '#032118', icon: '✅' },
-    ameliorer: { label: 'Tu peux viser plus', color: '#60a5fa', bg: '#0d1f3c', icon: '🚀' },
-    downgrade: { label: 'Objectif à revoir',  color: '#f87171', bg: '#1a0505', icon: '⚠️' },
-  };
-  const verdict = verdictConfig[d.verdict];
-  const conf = (objSet && d.confidence !== undefined) ? d.confidence : null;
-
-  function tag(text, color) {
-    return h('div', {style:{display:'inline-flex',alignItems:'center',background:color+'18',border:'1px solid '+color+'35',borderRadius:'8px',padding:'6px 10px',fontSize:'12px',color:color,fontWeight:'600',lineHeight:'1.3'}}, text);
-  }
-
-  function section(title, items, color) {
-    return h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px'}},
-      h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'10px',fontWeight:'700'}}, title),
-      h('div', {style:{display:'flex',flexDirection:'column',gap:'7px'}},
-        ...(items || []).map(function(item) {
-          return h('div', {style:{display:'flex',alignItems:'flex-start',gap:'8px'}},
-            h('div', {style:{width:'6px',height:'6px',borderRadius:'50%',background:color,flexShrink:'0',marginTop:'5px'}}),
-            h('div', {style:{fontSize:'13px',color:'#c4cdd8',lineHeight:'1.4'}}, item));
-        })));
-  }
-
-  const children = [
-    h('div', {style:{fontSize:'10px',color:'#7a889f',marginBottom:'10px',textAlign:'right'}}, 'En cache · il y a ' + formatAge(cached3.savedAt)),
-
-    h('div', {style:{background:'linear-gradient(135deg,#1a0f35,#0d1a35)',borderRadius:'16px',padding:'18px',marginBottom:'10px',border:'1px solid #2a1f4a'}},
-      h('div', {style:{fontSize:'9px',color:'#a3afc2',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'10px',fontWeight:'700'}}, 'Situation actuelle'),
-      h('div', {style:{display:'flex',gap:'8px',flexWrap:'wrap'}},
-        tag(d.niveau || '–', '#a78bfa'),
-        tag(d.tendance || '–', '#60a5fa'))),
-
-    section('✅ Points acquis', d.acquis, '#34d399'),
-    section('⚠️ À travailler', d.atravailler, '#fbbf24'),
-    section('🎯 Priorités des 4 prochaines semaines', d.priorites, '#a78bfa'),
-
-    // Verdict : uniquement quand un objectif est fixé
-    (objSet && verdict) ? h('div', {style:{background:verdict.bg,borderRadius:'12px',padding:'16px',marginBottom:'10px',border:'1px solid '+verdict.color+'40'}},
-      h('div', {style:{fontSize:'8px',color:verdict.color+'99',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'6px',fontWeight:'700'}}, 'Verdict objectif'),
-      h('div', {style:{fontSize:'14px',fontWeight:'800',color:verdict.color,marginBottom:'8px'}}, verdict.icon + ' ' + verdict.label),
-      h('div', {style:{fontSize:'12px',color:'#a3afc2',lineHeight:'1.6'}}, d.verdictDetail)) : null,
-
-    conf !== null ? h('div', {style:{background:'#0e1118',borderRadius:'12px',padding:'14px 16px',marginBottom:'10px',display:'flex',alignItems:'center',gap:'12px'}},
-      h('div', {style:{flex:'1'}},
-        h('div', {style:{fontSize:'10px',color:'#8b9ab3',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'6px',fontWeight:'700'}}, 'Indice de confiance'),
-        h('div', {style:{height:'4px',background:'#1a2035',borderRadius:'2px',overflow:'hidden'}},
-          h('div', {style:{height:'100%',width:conf+'%',background:confidenceColor(conf),borderRadius:'2px'}}))),
-      h('div', {style:{fontSize:'20px',fontWeight:'900',color:confidenceColor(conf),minWidth:'44px',textAlign:'right'}}, conf+'/100')) : null,
-
-    h('button', {onclick:function(){setState({view:'home'});},style:{width:'100%',padding:'15px',borderRadius:'12px',background:'#0e1118',border:'1px solid #1a2035',color:'#a3afc2',fontSize:'13px',fontWeight:'600'}}, '← Retour')
-  ];
-
-  return h.apply(null, ['div', {class:'fade',style:{padding:'20px 18px'}}].concat(children));
-}
-
-// Render
+/* ============================================================
+   Rendu
+   ============================================================ */
+let lastRenderedView = null;
 function render() {
   const app = document.getElementById('app');
   app.innerHTML = '';
-  if (state.view !== 'login') app.appendChild(renderHeader());
-  const views = { home:renderHome, login:renderLogin, loading:renderLoading, error:renderError, cross:renderCross, result:renderResult, prefs:renderPrefs, objective:renderObjective, bilan:renderBilan, runner:renderRunner, last:renderLast, status:renderStatus };
-  app.appendChild((views[state.view]||renderHome)());
+  const noTabs = state.view === 'login' || state.view === 'loading';
+  document.body.classList.toggle('no-tabs', noTabs);
+  const views = { home:renderHome, week:renderWeek, analyses:renderAnalyses, profil:renderProfil, login:renderLogin, loading:renderLoading, error:renderError, cross:renderCross, result:renderResult, prefs:renderPrefs, objective:renderObjective, status:renderStatus };
+  app.appendChild((views[state.view] || renderHome)());
+  if (!noTabs) app.appendChild(renderTabBar());
+  if (lastRenderedView !== state.view) { window.scrollTo(0, 0); lastRenderedView = state.view; }
+}
+
+// Anciens liens (notifications) : last, bilan, runner → nouveaux onglets
+function routeFromParam(v) {
+  if (v === 'last') return { view:'analyses', anaTab:'last' };
+  if (v === 'bilan') return { view:'analyses', anaTab:'bilan' };
+  if (v === 'runner') return { view:'profil' };
+  if (v === 'result' || v === 'week' || v === 'profil' || v === 'analyses') return { view:v };
+  if (v === 'status') return { view:'status' };
+  return null;
 }
 
 // Init
 handleOAuthParams();
 (function deepLink() {
-  const v = new URLSearchParams(window.location.search).get('view');
-  if (v && ['last','result','status','runner'].indexOf(v) >= 0) {
-    state.view = v;
-    window.history.replaceState({}, '', '/');
-  }
+  const r = routeFromParam(new URLSearchParams(window.location.search).get('view'));
+  if (r) { Object.assign(state, r); window.history.replaceState({}, '', '/'); }
 })();
 if (!state.auth) state.view = 'login';
 render();
@@ -1749,9 +1506,8 @@ if ('serviceWorker' in navigator) {
     if (!ev.data || ev.data.type !== 'open') return;
     const v = new URLSearchParams((ev.data.url || '').split('?')[1] || '').get('view');
     syncFromServer().then(function() {
-      if (v === 'status') openStatus();
-      else if (v && ['last','result','runner'].indexOf(v) >= 0) setState({ view: v });
-      else setState({ view: 'home' });
+      if (v === 'status') { openStatus(); return; }
+      setState(routeFromParam(v) || { view:'home' });
     });
   });
 }
